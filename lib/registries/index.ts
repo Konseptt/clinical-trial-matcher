@@ -12,7 +12,6 @@ import {
 import type { PatientProfile } from "@/lib/types";
 
 export type { RegistryTrial, RegistryQueryResult, RegistrySource } from "./types";
-export { buildRegistryQueryPlans } from "./query-builder";
 
 function dedupeTrials(trials: RegistryTrial[]): RegistryTrial[] {
   const seenIds = new Set<string>();

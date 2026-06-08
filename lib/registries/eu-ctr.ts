@@ -1,11 +1,54 @@
+import { capTrialSummary } from "@/lib/format";
 import { resolveRegistryCountry } from "@/lib/location";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
 
 const LEGACY_SEARCH =
   "https://www.clinicaltrialsregister.eu/ctr-search/search";
 
+const EU_SEARCH_COUNTRIES = new Set([
+  "united kingdom",
+  "germany",
+  "france",
+  "spain",
+  "italy",
+  "netherlands",
+  "belgium",
+  "switzerland",
+  "sweden",
+  "norway",
+  "denmark",
+  "ireland",
+  "austria",
+  "poland",
+  "portugal",
+  "finland",
+  "greece",
+  "czech republic",
+  "hungary",
+  "romania",
+]);
+
 function sanitizeQueryParam(val: string): string {
   return val.replace(/[^a-zA-Z0-9\s\-\/]/g, "").trim();
+}
+
+function buildSearchQuery(params: RegistrySearchParams): string {
+  const terms = params.terms
+    .map(sanitizeQueryParam)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (terms.length > 0) {
+    return terms.join(" ");
+  }
+
+  return sanitizeQueryParam(params.condition) || "cancer";
+}
+
+function shouldApplyEuCountryFilter(params: RegistrySearchParams): boolean {
+  const registryCountry = resolveRegistryCountry(params.location);
+  if (!registryCountry) return false;
+  return EU_SEARCH_COUNTRIES.has(registryCountry.toLowerCase());
 }
 
 function extractPhaseFromTitle(title: string): string {
@@ -59,7 +102,9 @@ function parseLegacyHtml(html: string): RegistryTrial[] {
       trialId,
       title,
       phase: extractPhaseFromTitle(title),
-      summary: conditionMatch?.[1]?.trim() ?? "No summary available.",
+      summary: capTrialSummary(
+        conditionMatch?.[1]?.trim() ?? "No summary available."
+      ),
       status: statuses[0] ?? "Ongoing",
       locations: countries.map((code) => ({
         facility: "EU member state site",
@@ -76,15 +121,15 @@ function parseLegacyHtml(html: string): RegistryTrial[] {
 }
 
 function buildLegacySearchUrl(params: RegistrySearchParams): string {
-  const cleanCondition = sanitizeQueryParam(params.condition);
+  const searchQuery = buildSearchQuery(params);
   const search = new URLSearchParams({
-    query: cleanCondition || "cancer",
+    query: searchQuery,
     status: "ongoing",
   });
 
-  const registryCountry = resolveRegistryCountry(params.location);
-  if (registryCountry) {
-    const cleanCountry = sanitizeQueryParam(registryCountry);
+  if (shouldApplyEuCountryFilter(params)) {
+    const registryCountry = resolveRegistryCountry(params.location);
+    const cleanCountry = sanitizeQueryParam(registryCountry ?? "");
     if (cleanCountry) {
       search.set("country", cleanCountry);
     }
@@ -96,7 +141,7 @@ function buildLegacySearchUrl(params: RegistrySearchParams): string {
 async function queryCtisApi(
   params: RegistrySearchParams
 ): Promise<RegistryTrial[]> {
-  const cleanCondition = sanitizeQueryParam(params.condition);
+  const searchQuery = buildSearchQuery(params);
   const response = await fetch(
     "https://euclinicaltrials.eu/ctis-public-api/search",
     {
@@ -106,7 +151,7 @@ async function queryCtisApi(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        searchCriteria: { medicalCondition: cleanCondition || "cancer" },
+        searchCriteria: { medicalCondition: searchQuery },
         pagination: { page: 0, pageSize: 15 },
       }),
       next: { revalidate: 0 },
@@ -151,31 +196,47 @@ async function queryCtisApi(
     }));
 }
 
+function dedupeEuTrials(trials: RegistryTrial[]): RegistryTrial[] {
+  const seen = new Set<string>();
+  const result: RegistryTrial[] = [];
+
+  for (const trial of trials) {
+    const key = trial.trialId.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trial);
+  }
+
+  return result.slice(0, 15);
+}
+
 export async function queryEuCtr(
   params: RegistrySearchParams
 ): Promise<RegistryQueryResult> {
   const ctisTrials = await queryCtisApi(params).catch(() => []);
-
-  if (ctisTrials.length > 0) {
-    return {
-      registry: "EU-CTR",
-      queryTerms: params.terms,
-      trials: ctisTrials,
-    };
-  }
-
   const url = buildLegacySearchUrl(params);
   const response = await fetch(url, {
-    headers: { Accept: "text/html" },
+    headers: {
+      Accept: "text/html",
+      "User-Agent": "ClinicalTrialMatcher/1.0",
+    },
     next: { revalidate: 0 },
   });
 
   if (!response.ok) {
+    if (ctisTrials.length > 0) {
+      return {
+        registry: "EU-CTR",
+        queryTerms: params.terms,
+        trials: ctisTrials,
+      };
+    }
     throw new Error(`EU-CTR search error: ${response.status}`);
   }
 
   const html = await response.text();
-  const trials = parseLegacyHtml(html);
+  const legacyTrials = parseLegacyHtml(html);
+  const trials = dedupeEuTrials([...ctisTrials, ...legacyTrials]);
 
   return {
     registry: "EU-CTR",

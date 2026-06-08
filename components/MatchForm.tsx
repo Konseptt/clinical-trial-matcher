@@ -3,27 +3,42 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { SAMPLE_NOTES } from "@/lib/sample-notes";
-import type { PatientProfile } from "@/lib/types";
+import { MODE_STORAGE_KEY } from "@/lib/mode";
+import { SAMPLE_NOTES, SAMPLE_PATIENT_DESCRIPTION } from "@/lib/sample-notes";
+import type { AppMode, PatientProfile } from "@/lib/types";
 
-export default function MatchForm() {
+export default function MatchForm({ mode }: { mode: AppMode }) {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [savedProfiles, setSavedProfiles] = useState<Array<{ id: string; name: string; profile: PatientProfile }>>([]);
-  const [searchHistory, setSearchHistory] = useState<Array<{ id: string; notes: string; timestamp: number }>>([]);
+  const [savedProfiles, setSavedProfiles] = useState<
+    Array<{ id: string; name: string; profile: PatientProfile }>
+  >([]);
+  const [searchHistory, setSearchHistory] = useState<
+    Array<{ id: string; notes: string; timestamp: number }>
+  >([]);
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Load default notes if sample query is present or check sessionStorage, and load local storage
   useEffect(() => {
-    const isSample = searchParams.get("sample") === "1";
-    if (isSample) {
+    const isDoctorSample = searchParams.get("sample") === "1";
+    const isPatientSample = searchParams.get("sample") === "patient";
+
+    if (mode === "patient" && isPatientSample) {
+      setNotes(SAMPLE_PATIENT_DESCRIPTION);
+      return;
+    }
+
+    if (mode === "doctor" && isDoctorSample) {
       setNotes(SAMPLE_NOTES);
+      return;
+    }
+
+    const saved = sessionStorage.getItem("clinical_notes");
+    const savedMode = sessionStorage.getItem(MODE_STORAGE_KEY);
+    if (saved && savedMode === mode) {
+      setNotes(saved);
     } else {
-      const saved = sessionStorage.getItem("clinical_notes");
-      if (saved) {
-        setNotes(saved);
-      }
+      setNotes("");
     }
 
     try {
@@ -35,106 +50,122 @@ export default function MatchForm() {
     } catch (e) {
       console.error("Failed to load saved data:", e);
     }
-  }, [searchParams]);
+  }, [searchParams, mode]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     const trimmed = notes.trim();
+    const minLength = mode === "patient" ? 15 : 20;
 
-    if (!trimmed || trimmed.length < 20) {
-      setError("Please provide at least a few sentences of patient notes (20 characters minimum).");
+    if (!trimmed || trimmed.length < minLength) {
+      setError(
+        mode === "patient"
+          ? "Please provide a clinical summary of at least 15 characters."
+          : "Please provide clinical notes of at least 20 characters."
+      );
       return;
     }
 
     if (trimmed.length > 10000) {
-      setError("Your notes exceed the maximum limit of 10,000 characters. Please shorten them and try again.");
+      setError(
+        "Input exceeds the 10,000 character limit. Please shorten the entry and resubmit."
+      );
       return;
     }
 
     try {
       sessionStorage.setItem("clinical_notes", trimmed);
+      sessionStorage.setItem(MODE_STORAGE_KEY, mode);
+      sessionStorage.removeItem("clinical_profile");
       router.push("/results");
     } catch (err) {
       console.error("Storage error:", err);
-      setError("Failed to save patient notes. Please check browser settings.");
+      setError("Unable to save input locally. Please check browser storage settings.");
     }
   };
 
+  const isPatient = mode === "patient";
+
   return (
     <section aria-labelledby="notes-heading">
-      <form onSubmit={handleSubmit} noValidate className="info-card">
+      <form onSubmit={handleSubmit} noValidate>
         <h2
           id="notes-heading"
-          className="font-display text-xl text-foreground text-pretty mb-1.5"
+          className="font-display text-2xl text-foreground text-pretty mb-2"
         >
-          Patient notes
+          {isPatient ? "Clinical summary" : "Clinical notes"}
         </h2>
-        <p className="section-hint mb-5">
-          Include age, sex, diagnosis, cancer stage, biomarkers, past
-          treatments, and city or country if you know it. More detail usually
-          means better matches.
+        <p className="section-hint mb-6">
+          {isPatient
+            ? "Include age, diagnosis, prior treatments, location, and treatment objectives. Narrative format is acceptable."
+            : "Include age, sex, diagnosis, stage, biomarkers, prior therapies, and location where available."}
         </p>
         <label htmlFor="clinical-notes" className="sr-only">
-          Patient clinical notes
+          {isPatient ? "Clinical summary" : "Patient clinical notes"}
         </label>
 
-        <textarea
-          id="clinical-notes"
-          name="notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Example: 58-year-old woman with stage III HER2-positive breast cancer. Lives in Boston, MA. Prior mastectomy, chemo, and trastuzumab. Looking for trials near home."
-          rows={12}
-          required
-          minLength={20}
-          maxLength={10000}
-          spellCheck={true}
-          autoComplete="off"
-          data-form-type="other"
-          data-1p-ignore
-          data-lpignore="true"
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? "notes-error notes-hint" : "notes-hint"}
-          className="notes-field"
-        />
+        <div className="compose-pane">
+          <textarea
+            id="clinical-notes"
+            name="notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder={
+              isPatient
+                ? "Example: I'm 58 and live near Boston. I have stage III HER2-positive breast cancer. I had surgery, chemo, and trastuzumab. Scans look stable. I'm looking for trials for newer HER2 treatments."
+                : "Example: 58-year-old woman with stage III HER2-positive breast cancer. Lives in Boston, MA. Prior mastectomy, chemo, and trastuzumab. Looking for trials near home."
+            }
+            rows={12}
+            required
+            minLength={isPatient ? 15 : 20}
+            maxLength={10000}
+            spellCheck={true}
+            autoComplete="off"
+            data-form-type="other"
+            data-1p-ignore
+            data-lpignore="true"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? "notes-error notes-hint" : "notes-hint"}
+            className="notes-field"
+          />
+        </div>
 
-        <p id="notes-hint" className="section-hint mt-2">
-          At least a few sentences (20 characters minimum, 10,000 characters maximum).
-        </p>
+        <div className="compose-footer">
+          <p id="notes-hint">
+            {isPatient
+              ? "Minimum 15 characters required"
+              : "Minimum 20 characters required"}
+          </p>
+          <span aria-hidden="true">{notes.length.toLocaleString()} / 10,000</span>
+        </div>
 
         {error && (
-          <div
-            id="notes-error"
-            role="alert"
-            className="mt-4 info-card border-destructive/30 bg-destructive/5"
-          >
-            <p className="font-body text-sm text-destructive font-medium">
-              Please check your entry
-            </p>
-            <p className="section-hint mt-1 text-destructive/80">
-              {error}
-            </p>
-          </div>
+          <p id="notes-error" role="alert" className="mt-4 text-sm text-destructive font-body">
+            {error}
+          </p>
         )}
 
         <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-4">
           <button type="submit" className="btn-primary">
-            Find matching trials
+            {isPatient ? "Search trials" : "Run search"}
           </button>
-          <Link href="/?sample=1" className="btn-ghost">
-            Try an example case
+          <Link
+            href={isPatient ? "/?sample=patient" : "/?sample=1"}
+            className="btn-ghost"
+          >
+            Load sample case
           </Link>
         </div>
       </form>
 
-      {(savedProfiles.length > 0 || searchHistory.length > 0) && (
+      {!isPatient && (savedProfiles.length > 0 || searchHistory.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
           {savedProfiles.length > 0 && (
-            <div className="info-card">
-              <h3 className="font-display text-sm font-semibold text-foreground mb-3 flex items-center gap-1.5">
-                📁 Saved Patient Profiles
+            <div className="pt-6 divider">
+              <h3 className="font-display text-lg text-foreground mb-4 mt-6">
+                Saved profiles
               </h3>
               <ul className="space-y-2">
                 {savedProfiles.map((p) => (
@@ -143,18 +174,27 @@ export default function MatchForm() {
                       type="button"
                       onClick={() => {
                         sessionStorage.removeItem("clinical_notes");
-                        sessionStorage.setItem("clinical_profile", JSON.stringify(p.profile));
+                        sessionStorage.setItem(MODE_STORAGE_KEY, "doctor");
+                        sessionStorage.setItem(
+                          "clinical_profile",
+                          JSON.stringify(p.profile)
+                        );
                         router.push("/results");
                       }}
-                      className="text-left w-full hover:bg-muted p-2 rounded border border-border-subtle text-xs transition-colors flex justify-between items-center bg-surface cursor-pointer"
+                      className="text-left w-full py-3 border-b border-border-subtle text-sm transition-colors flex justify-between items-center cursor-pointer hover:text-primary"
                     >
                       <div>
-                        <span className="font-bold text-foreground block">{p.name}</span>
+                        <span className="font-bold text-foreground block">
+                          {p.name}
+                        </span>
                         <span className="text-[10px] text-faint">
-                          {p.profile.primaryDiagnosis} {p.profile.stage ? `(${p.profile.stage})` : ""}
+                          {p.profile.primaryDiagnosis}{" "}
+                          {p.profile.stage ? `(${p.profile.stage})` : ""}
                         </span>
                       </div>
-                      <span className="text-[10px] text-primary font-semibold">Load Profile →</span>
+                      <span className="text-[10px] text-primary underline underline-offset-2">
+                        Load
+                      </span>
                     </button>
                   </li>
                 ))}
@@ -163,20 +203,18 @@ export default function MatchForm() {
           )}
 
           {searchHistory.length > 0 && (
-            <div className="info-card">
-              <h3 className="font-display text-sm font-semibold text-foreground mb-3 flex items-center gap-1.5">
-                ⏱️ Recent Searches
+            <div className="pt-6 divider">
+              <h3 className="font-display text-lg text-foreground mb-4 mt-6">
+                Recent searches
               </h3>
               <ul className="space-y-2">
                 {searchHistory.map((item) => (
                   <li key={item.id}>
                     <button
                       type="button"
-                      onClick={() => {
-                        setNotes(item.notes);
-                      }}
-                      className="text-left w-full hover:bg-muted p-2 rounded border border-border-subtle text-xs transition-colors bg-surface cursor-pointer"
-                      title="Click to populate notes"
+                      onClick={() => setNotes(item.notes)}
+                      className="text-left w-full py-3 border-b border-border-subtle text-sm transition-colors cursor-pointer hover:text-primary"
+                      title="Restore to form"
                     >
                       <span className="text-faint text-[10px] block mb-0.5">
                         {new Date(item.timestamp).toLocaleDateString()}

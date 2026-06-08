@@ -442,6 +442,47 @@ async function scoreTrial(
 const MIN_DISPLAY_SCORE = 45;
 const MAX_RESULTS = 10;
 
+export function rankMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
+  const ranked = [...trials].sort((a, b) => {
+    const phaseDiff =
+      (isPhaseTwoOrAbove(b.phase) ? 1 : 0) -
+      (isPhaseTwoOrAbove(a.phase) ? 1 : 0);
+    if (phaseDiff !== 0) return phaseDiff;
+    return b.matchScore - a.matchScore;
+  });
+
+  const relevant = ranked.filter((trial) => trial.matchScore >= MIN_DISPLAY_SCORE);
+  if (relevant.length > 0) return relevant.slice(0, MAX_RESULTS);
+  return ranked.slice(0, 5);
+}
+
+export async function scoreAllRegistryTrials(
+  trials: RegistryTrial[],
+  profile: PatientProfile
+): Promise<MatchedTrial[]> {
+  const scoredPromises = trials.map(async (trial) => {
+    const { score, breakdown, distance, biomarkerGates, washoutChecks } =
+      await scoreTrial(trial, profile);
+    return {
+      registry: trial.registry,
+      trialId: trial.trialId,
+      title: trial.title,
+      matchScore: score,
+      scoreBreakdown: breakdown,
+      distance,
+      phase: trial.phase,
+      summary: trial.summary,
+      locations: trial.locations,
+      status: trial.status,
+      url: trial.url,
+      biomarkerGates,
+      washoutChecks,
+    } satisfies MatchedTrial;
+  });
+
+  return Promise.all(scoredPromises);
+}
+
 export async function scoreAndRankTrials(
   trials: RegistryTrial[],
   profile: PatientProfile
@@ -466,16 +507,5 @@ export async function scoreAndRankTrials(
   });
 
   const scored = await Promise.all(scoredPromises);
-
-  const ranked = scored.sort((a, b) => {
-    const phaseDiff =
-      (isPhaseTwoOrAbove(b.phase) ? 1 : 0) -
-      (isPhaseTwoOrAbove(a.phase) ? 1 : 0);
-    if (phaseDiff !== 0) return phaseDiff;
-    return b.matchScore - a.matchScore;
-  });
-
-  const relevant = ranked.filter((trial) => trial.matchScore >= MIN_DISPLAY_SCORE);
-  if (relevant.length > 0) return relevant.slice(0, MAX_RESULTS);
-  return ranked.slice(0, 5);
+  return rankMatchedTrials(scored);
 }

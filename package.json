@@ -1,7 +1,14 @@
 {
   "name": "clinical-trial-matcher",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "description": "Search international clinical trial registries using patient clinical information.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Konseptt/clinical-trial-matcher.git"
+  },
+  "homepage": "https://clinical-trial-matcher-beta.vercel.app",
+  "license": "MIT",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

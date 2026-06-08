@@ -1,65 +1,36 @@
-import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
-
-const PORTAL_BASE = "https://trialsearch.who.int";
-
-function extractHiddenField(html: string, fieldId: string): string {
-  const pattern = new RegExp(
-    `id="${fieldId}"[^>]*value="([^"]*)"`,
-    "i"
-  );
-  return html.match(pattern)?.[1] ?? "";
-}
-
-function parseWhoSearchResults(html: string): RegistryTrial[] {
-  const trials: RegistryTrial[] = [];
-  const blocks = html.split("DataList1_ctl").slice(1);
-
-  for (const block of blocks) {
-    const trialIdMatch = block.match(
-      /TrialID=([A-Za-z0-9-]+)/
-    );
-    const titleMatch = block.match(
-      /Public_titleLabel">([^<]+)</
-    );
-    const statusMatch = block.match(
-      /Recruitment_statusLabel[^>]*>([^<]+)</
-    );
-    const phaseMatch = block.match(/PhaseLabel[^>]*>([^<]+)</);
-    const registryMatch = block.match(
-      /Primary_sponsorLabel[^>]*>([^<]+)</
-    );
-
-    if (!trialIdMatch || !titleMatch) continue;
-
-    const trialId = trialIdMatch[1];
-    trials.push({
-      registry: "WHO ICTRP",
-      trialId,
-      title: titleMatch[1].trim(),
-      phase: phaseMatch?.[1]?.trim() || "Not specified",
-      summary: registryMatch?.[1]?.trim() ?? "WHO ICTRP indexed trial.",
-      status: statusMatch?.[1]?.trim() ?? "Unknown",
-      locations: [],
-      eligibilityText: "",
-      url: `${PORTAL_BASE}/Trial2.aspx?TrialID=${encodeURIComponent(trialId)}`,
-    });
-  }
-
-  return trials;
-}
+import type { RegistryQueryResult, RegistrySearchParams } from "./types";
+import {
+  WHO_PORTAL_BASE,
+  buildWhoSearchBody,
+  parseSetCookieHeader,
+  parseWhoSearchResults,
+} from "./who-ictrp-shared";
 
 function sanitizeQueryParam(val: string): string {
   return val.replace(/[^a-zA-Z0-9\s\-\/]/g, "").trim();
 }
 
+function buildSearchQuery(params: RegistrySearchParams): string {
+  const terms = params.terms
+    .map(sanitizeQueryParam)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (terms.length > 0) {
+    return terms.join(" ");
+  }
+
+  return sanitizeQueryParam(params.condition) || "cancer";
+}
+
 async function postWhoSearch(
   params: RegistrySearchParams
-): Promise<RegistryTrial[]> {
-  const session = await fetch(`${PORTAL_BASE}/Default.aspx`, {
+): Promise<ReturnType<typeof parseWhoSearchResults>> {
+  const session = await fetch(`${WHO_PORTAL_BASE}/Default.aspx`, {
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (compatible; TrialRegistryBot/1.0; clinical-trial-matching)",
-      Accept: "text/html",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      Accept: "text/html,application/xhtml+xml",
     },
     next: { revalidate: 0 },
   });
@@ -70,30 +41,23 @@ async function postWhoSearch(
 
   const html = await session.text();
   if (html.includes("NoAccess.aspx")) {
-    throw new Error(
-      "WHO ICTRP blocks automated search from this environment. Use ClinicalTrials.gov or EU-CTR results, or search manually at trialsearch.who.int."
-    );
+    throw new Error("WHO_ICTRP_BROWSER_REQUIRED");
   }
 
-  const cleanCondition = sanitizeQueryParam(params.condition);
+  const cookieHeader = parseSetCookieHeader(session.headers);
+  const cleanCondition = buildSearchQuery(params);
+  const body = buildWhoSearchBody(html, cleanCondition);
 
-  const body = new URLSearchParams({
-    __VIEWSTATE: extractHiddenField(html, "__VIEWSTATE"),
-    __VIEWSTATEGENERATOR: extractHiddenField(html, "__VIEWSTATEGENERATOR"),
-    __EVENTVALIDATION: extractHiddenField(html, "__EVENTVALIDATION"),
-    TextBox1: cleanCondition || "cancer",
-    Button1: "Search",
-  });
-
-  const response = await fetch(`${PORTAL_BASE}/Default.aspx`, {
+  const response = await fetch(`${WHO_PORTAL_BASE}/Default.aspx`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       "User-Agent":
-        "Mozilla/5.0 (compatible; TrialRegistryBot/1.0; clinical-trial-matching)",
-      Accept: "text/html",
-      Cookie: session.headers.get("set-cookie") ?? "",
-      Referer: `${PORTAL_BASE}/Default.aspx`,
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      Accept: "text/html,application/xhtml+xml",
+      Cookie: cookieHeader,
+      Referer: `${WHO_PORTAL_BASE}/Default.aspx`,
+      Origin: WHO_PORTAL_BASE,
     },
     body: body.toString(),
     next: { revalidate: 0 },
@@ -101,9 +65,7 @@ async function postWhoSearch(
 
   const resultHtml = await response.text();
   if (resultHtml.includes("NoAccess.aspx")) {
-    throw new Error(
-      "WHO ICTRP search POST blocked. The portal requires browser-based access."
-    );
+    throw new Error("WHO_ICTRP_BROWSER_REQUIRED");
   }
 
   return parseWhoSearchResults(resultHtml);
@@ -120,14 +82,17 @@ export async function queryWhoIctrp(
       trials,
     };
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "WHO ICTRP search unavailable";
+
     return {
       registry: "WHO ICTRP",
       queryTerms: params.terms,
       trials: [],
       error:
-        error instanceof Error
-          ? error.message
-          : "WHO ICTRP search unavailable",
+        message === "WHO_ICTRP_BROWSER_REQUIRED"
+          ? "WHO_ICTRP_BROWSER_REQUIRED"
+          : message,
     };
   }
 }

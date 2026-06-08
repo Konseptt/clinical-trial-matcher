@@ -30,15 +30,20 @@ yarn-error.log*
 
 # env files
 .env*
+!.env.example
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
-# agents/skills
+# tooling
 .agents/
 /agents/
 skills-lock.json
 .gemini/
+tsconfig.tsbuildinfo
+
+# cursor / ide
+.cursor/
 
 

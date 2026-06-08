@@ -107,8 +107,6 @@ export function applyTrialFilters(
     isOpenRecruitmentStatus(trial.status)
   );
 
-  filtered = filtered.filter((trial) => matchesLocation(trial, options.location));
-
   if (options.prioritizePhaseTwoPlus) {
     const phaseFiltered = filtered.filter((trial) =>
       isPhaseTwoOrAbove(trial.phase)

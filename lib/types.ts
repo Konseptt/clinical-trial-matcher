@@ -1,3 +1,5 @@
+export type AppMode = "patient" | "doctor";
+
 export interface PatientLocation {
   city: string | null;
   state: string | null;
@@ -72,6 +74,15 @@ export interface WashoutCheckResult {
   status: "eligible" | "ineligible" | "unknown";
 }
 
+export interface SimplifiedTrialGuide {
+  headline: string;
+  goodFit: string;
+  studyBasics: string[];
+  whatToExpect: string[];
+  goodToKnow: string;
+  askYourDoctor: string[];
+}
+
 export interface MatchedTrial {
   registry: TrialRegistry;
   trialId: string;
@@ -100,6 +111,7 @@ export interface MatchResponse {
   trials: MatchedTrial[];
   queryTerms: string[];
   registrySummaries: RegistryQuerySummary[];
+  mode?: AppMode;
 }
 
 export interface ClinicalTrialsGovStudy {

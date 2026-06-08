@@ -1,24 +1,67 @@
 "use server";
 
 import { runMatchPipeline, runMatchPipelineByProfile } from "@/lib/match";
-import type { MatchResponse, PatientProfile } from "@/lib/types";
+import { applyTrialFilters } from "@/lib/registries/filters";
+import type { RegistryTrial } from "@/lib/registries/types";
+import { generateSimplifiedTrialGuide } from "@/lib/simplify-trial";
+import { isNvidiaConfigured } from "@/lib/nvidia";
+import { rankMatchedTrials, scoreAllRegistryTrials } from "@/lib/scoring";
+import type {
+  AppMode,
+  MatchResponse,
+  MatchedTrial,
+  PatientProfile,
+  SimplifiedTrialGuide,
+} from "@/lib/types";
 
-export async function getResultsAction(notes: string): Promise<MatchResponse> {
+function dedupeMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
+  const byKey = new Map<string, MatchedTrial>();
+
+  for (const trial of trials) {
+    const key = `${trial.registry}:${trial.trialId}`.toLowerCase();
+    const existing = byKey.get(key);
+    if (!existing || trial.matchScore > existing.matchScore) {
+      byKey.set(key, trial);
+    }
+  }
+
+  return Array.from(byKey.values());
+}
+
+export async function getResultsAction(
+  notes: string,
+  mode: AppMode = "doctor"
+): Promise<MatchResponse> {
   const trimmedNotes = String(notes ?? "").trim();
+  const minLength = mode === "patient" ? 15 : 20;
 
-  if (!trimmedNotes || trimmedNotes.length < 20) {
-    throw new Error("Please provide at least a few sentences of patient notes (20 characters minimum).");
+  if (!trimmedNotes || trimmedNotes.length < minLength) {
+    throw new Error(
+      mode === "patient"
+        ? "Please provide a clinical summary of at least 15 characters."
+        : "Please provide clinical notes of at least 20 characters."
+    );
   }
 
   if (trimmedNotes.length > 10000) {
-    throw new Error("Your notes exceed the maximum limit of 10,000 characters. Please shorten them and try again.");
+    throw new Error("Input exceeds the 10,000 character limit. Please shorten the entry and resubmit.");
   }
 
   try {
-    return await runMatchPipeline(trimmedNotes);
+    return await runMatchPipeline(trimmedNotes, mode);
   } catch (error) {
+    if (
+      mode === "patient" &&
+      error instanceof Error &&
+      error.message === "PATIENT_MODE_AI_UNAVAILABLE"
+    ) {
+      throw new Error(
+        "Patient mode requires NVIDIA_API_KEY on the server. Use Clinician mode without it."
+      );
+    }
+
     console.error("Clinical trial match pipeline failure:", error);
-    throw new Error("We were unable to complete the trial search at this time.");
+    throw new Error("The trial search could not be completed at this time.");
   }
 }
 
@@ -27,50 +70,91 @@ export async function getResultsByProfileAction(profile: PatientProfile): Promis
     return await runMatchPipelineByProfile(profile);
   } catch (error) {
     console.error("Clinical trial match by profile failure:", error);
-    throw new Error("We were unable to complete the trial search at this time.");
+    throw new Error("The trial search could not be completed at this time.");
   }
 }
 
-export async function getSimplifiedSummaryAction(trialId: string, summary: string): Promise<string> {
-  const apiKey = process.env.NVIDIA_API_KEY || "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";
-  const prompt = `You are a clinical trial simplification assistant. Translate the following clinical trial summary into layperson terms (approximately a 6th-grade reading level). Keep it concise (2-4 sentences max), focus on what the trial is testing and why, and format it as a clean paragraph or simple bullet points. Do not include markdown headers, greetings, or explanations.
-  
-Clinical Trial Summary:
-"${summary}"`;
+export async function integrateWhoTrialsAction(
+  whoTrials: RegistryTrial[],
+  profile: PatientProfile,
+  existing: MatchResponse
+): Promise<MatchResponse> {
+  const filtered = applyTrialFilters(whoTrials, {
+    location: profile.location,
+    prioritizePhaseTwoPlus: true,
+  });
+
+  const scoredWho = await scoreAllRegistryTrials(filtered, profile);
+  const mergedTrials = rankMatchedTrials(
+    dedupeMatchedTrials([...existing.trials, ...scoredWho])
+  );
+
+  const registrySummaries = existing.registrySummaries.map((summary) =>
+    summary.registry === "WHO ICTRP"
+      ? {
+          ...summary,
+          trialCount: whoTrials.length,
+          error: undefined,
+        }
+      : summary
+  );
+
+  return {
+    ...existing,
+    trials: mergedTrials,
+    registrySummaries,
+  };
+}
+
+export async function getSimplifiedSummaryAction(input: {
+  trialTitle: string;
+  trialSummary: string;
+  trialPhase: string;
+  trialStatus: string;
+  matchScore: number;
+  profile: PatientProfile;
+}): Promise<{ guide: SimplifiedTrialGuide } | { error: string }> {
+  const trialTitle = String(input.trialTitle ?? "").trim().slice(0, 500);
+  const trialSummary = String(input.trialSummary ?? "").trim().slice(0, 4000);
+
+  if (!trialTitle || !trialSummary) {
+    return { error: "Required trial information is unavailable." };
+  }
+
+  if (!isNvidiaConfigured()) {
+    return {
+      error:
+        "Patient-facing summaries are unavailable. Configure NVIDIA_API_KEY on the server.",
+    };
+  }
 
   try {
-    const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+    const guide = await generateSimplifiedTrialGuide({
+      trialTitle,
+      trialSummary,
+      trialPhase: String(input.trialPhase ?? "Not specified").slice(0, 80),
+      trialStatus: String(input.trialStatus ?? "Unknown").slice(0, 80),
+      matchScore: Math.min(100, Math.max(0, Number(input.matchScore) || 0)),
+      profile: {
+        primaryDiagnosis: input.profile.primaryDiagnosis,
+        stage: input.profile.stage,
+        age: input.profile.age,
+        sex: input.profile.sex,
+        biomarkers: input.profile.biomarkers.slice(0, 10),
+        priorTreatments: input.profile.priorTreatments.slice(0, 8),
+        location: input.profile.location,
       },
-      body: JSON.stringify({
-        model: "meta/llama-3.3-70b-instruct",
-        messages: [
-          {
-            role: "system",
-            content: "You simplify clinical trials for patients.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.3,
-        top_p: 0.7,
-        max_tokens: 512,
-      }),
     });
 
-    if (!response.ok) {
-      throw new Error(`NVIDIA API response error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || "No translation generated.";
+    return { guide };
   } catch (error) {
-    console.error("Failed to simplify summary:", error);
-    return "We were unable to generate a simplified summary at this time.";
+    if (error instanceof Error && error.message === "PATIENT_MODE_AI_UNAVAILABLE") {
+      return {
+        error:
+          "Patient-facing summaries are unavailable. Configure NVIDIA_API_KEY on the server.",
+      };
+    }
+    return { error: "Unable to generate the patient summary at this time. Please try again." };
   }
 }
+

@@ -1,6 +1,17 @@
 import Link from "next/link";
-import { useState, useEffect } from "react";
-import { formatTrialStatus } from "@/lib/format";
+import { useState, useEffect, useTransition, useRef } from "react";
+import {
+  getSimplifiedSummaryAction,
+  integrateWhoTrialsAction,
+} from "@/app/actions/match";
+import { queryWhoIctrpFromBrowser } from "@/lib/registries/who-ictrp-client";
+import {
+  formatTrialStatus,
+  normalizeTrialSummary,
+  stripEmDashes,
+  truncateTrialSummary,
+  TRIAL_SUMMARY_DISPLAY_MAX,
+} from "@/lib/format";
 import { formatLocationDisplay } from "@/lib/location";
 import type {
   MatchResponse,
@@ -8,10 +19,8 @@ import type {
   PatientLocation,
   MatchedTrial,
   TreatmentHistory,
-  BiomarkerGate,
-  WashoutCheckResult
+  SimplifiedTrialGuide,
 } from "@/lib/types";
-import { getSimplifiedSummaryAction } from "@/app/actions/match";
 
 interface ResultsDashboardProps {
   data: MatchResponse;
@@ -28,16 +37,67 @@ function safeUrl(url: string): string {
   return "#";
 }
 
-function matchBadgeClass(score: number): string {
-  if (score >= 80) return "match-badge-high match-score-high";
-  if (score >= 55) return "match-badge-mid match-score-mid";
-  return "match-badge-low match-score-low";
+function scoreRingClass(score: number): string {
+  if (score >= 80) return "score-ring-high";
+  if (score >= 55) return "score-ring-mid";
+  return "score-ring-low";
+}
+
+const SCORE_RING_R = 18;
+const SCORE_RING_C = 2 * Math.PI * SCORE_RING_R;
+
+function ScoreRing({
+  score,
+  label,
+  expanded,
+  onClick,
+}: {
+  score: number;
+  label: string;
+  expanded: boolean;
+  onClick: () => void;
+}) {
+  const dash = (score / 100) * SCORE_RING_C;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`score-ring ${scoreRingClass(score)}`}
+      aria-label={`Match score: ${score}%. Click to view breakdown.`}
+      aria-expanded={expanded}
+    >
+      <svg width="60" height="60" viewBox="0 0 44 44" className="-rotate-90" aria-hidden="true">
+        <circle
+          cx="22"
+          cy="22"
+          r={SCORE_RING_R}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity={0.14}
+          strokeWidth="2.5"
+        />
+        <circle
+          cx="22"
+          cy="22"
+          r={SCORE_RING_R}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeDasharray={`${dash} ${SCORE_RING_C}`}
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className="score-ring-value">{score}</span>
+      <span className="score-ring-label">{label}</span>
+    </button>
+  );
 }
 
 function matchLabel(score: number): string {
-  if (score >= 80) return "Strong fit";
-  if (score >= 55) return "Possible fit";
-  return "Worth reviewing";
+  if (score >= 80) return "Strong match";
+  if (score >= 55) return "Moderate match";
+  return "Review recommended";
 }
 
 function formatSex(sex: PatientProfile["sex"]): string | null {
@@ -79,13 +139,13 @@ function TagEditor({ tags, onChange, placeholder }: TagEditorProps) {
         {tags.map((tag, idx) => (
           <span
             key={idx}
-            className="inline-flex items-center gap-1 bg-muted px-2 py-0.5 rounded text-xs text-foreground font-medium border border-border-subtle"
+            className="inline-flex items-center gap-1 text-xs text-foreground font-body"
           >
             {tag}
             <button
               type="button"
               onClick={() => handleRemove(idx)}
-              className="text-faint hover:text-destructive focus:outline-none font-bold text-sm leading-none pl-1"
+              className="text-faint hover:text-destructive focus:outline-none text-sm leading-none"
               aria-label={`Remove ${tag}`}
             >
               &times;
@@ -93,7 +153,7 @@ function TagEditor({ tags, onChange, placeholder }: TagEditorProps) {
           </span>
         ))}
         {tags.length === 0 && (
-          <span className="text-xs text-faint italic py-0.5">None added yet</span>
+          <span className="text-xs text-faint italic py-0.5">No entries</span>
         )}
       </div>
       <div className="flex gap-2">
@@ -102,13 +162,13 @@ function TagEditor({ tags, onChange, placeholder }: TagEditorProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder || "Add item..."}
-          className="w-full bg-background border border-border rounded-md px-2.5 py-1 text-xs text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+          placeholder={placeholder || "Add entry"}
+          className="field-input text-xs flex-1"
         />
         <button
           type="button"
           onClick={handleAdd}
-          className="bg-primary hover:bg-secondary text-on-primary text-xs font-semibold px-3 py-1 rounded-md transition-colors"
+          className="btn-ghost text-xs shrink-0"
         >
           Add
         </button>
@@ -201,21 +261,21 @@ function ProfileSummary({
   if (isEditing) {
     return (
       <form onSubmit={handleSave} className="space-y-4 text-left">
-        <div className="flex items-center justify-between border-b border-border-subtle pb-3 mb-2">
+        <div className="flex items-center justify-between pb-3 mb-2">
           <h2 className="font-display text-lg font-semibold text-foreground">
-            Edit Details
+            Edit patient profile
           </h2>
-          <div className="flex gap-2">
+          <div className="flex gap-4">
             <button
               type="button"
               onClick={() => setIsEditing(false)}
-              className="px-2.5 py-1.5 border border-border text-xs rounded-md hover:bg-muted font-medium text-faint transition-colors"
+              className="btn-ghost text-xs"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-2.5 py-1.5 bg-accent hover:bg-accent-dark text-on-primary text-xs rounded-md font-semibold transition-colors"
+              className="btn-primary text-xs min-h-9 px-4"
             >
               Save
             </button>
@@ -233,7 +293,7 @@ function ProfileSummary({
               onChange={(e) =>
                 setEditedAge(e.target.value === "" ? "" : Number(e.target.value))
               }
-              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+              className="field-input text-xs"
             />
           </div>
 
@@ -242,7 +302,7 @@ function ProfileSummary({
             <select
               value={editedSex}
               onChange={(e) => setEditedSex(e.target.value as PatientProfile["sex"])}
-              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+              className="field-select text-xs"
             >
               <option value="male">Male</option>
               <option value="female">Female</option>
@@ -256,7 +316,7 @@ function ProfileSummary({
               type="text"
               value={editedDiagnosis}
               onChange={(e) => setEditedDiagnosis(e.target.value)}
-              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+              className="field-input text-xs"
               required
             />
           </div>
@@ -268,22 +328,22 @@ function ProfileSummary({
               value={editedStage}
               onChange={(e) => setEditedStage(e.target.value)}
               placeholder="e.g. Stage III, Stage IV"
-              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+              className="field-input text-xs"
             />
           </div>
 
-          <div className="border border-border-subtle rounded-md p-2.5 space-y-2.5 bg-muted/20">
-            <span className="block text-xs font-semibold text-faint border-b border-border-subtle pb-1">
+          <div className="space-y-2.5 pt-2">
+            <span className="block text-xs font-semibold text-faint">
               Location
             </span>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-[10px] font-semibold text-faint mb-0.5">City</label>
                 <input
                   type="text"
                   value={editedCity}
                   onChange={(e) => setEditedCity(e.target.value)}
-                  className="w-full bg-background border border-border rounded-md px-2 py-1 text-[11px] text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                  className="field-input text-[11px]"
                 />
               </div>
               <div>
@@ -293,7 +353,7 @@ function ProfileSummary({
                   value={editedState}
                   onChange={(e) => setEditedState(e.target.value)}
                   placeholder="MA"
-                  className="w-full bg-background border border-border rounded-md px-2 py-1 text-[11px] text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                  className="field-input text-[11px]"
                 />
               </div>
               <div>
@@ -302,7 +362,7 @@ function ProfileSummary({
                   type="text"
                   value={editedCountry}
                   onChange={(e) => setEditedCountry(e.target.value)}
-                  className="w-full bg-background border border-border rounded-md px-2 py-1 text-[11px] text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                  className="field-input text-[11px]"
                 />
               </div>
             </div>
@@ -313,11 +373,11 @@ function ProfileSummary({
             <select
               value={editedMetastasis}
               onChange={(e) => setEditedMetastasis(e.target.value)}
-              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+              className="field-select text-xs"
             >
               <option value="unknown">Unknown</option>
-              <option value="yes">Present</option>
-              <option value="no">None noted</option>
+              <option value="yes">Metastatic disease present</option>
+              <option value="no">No metastatic disease documented</option>
             </select>
           </div>
 
@@ -331,7 +391,7 @@ function ProfileSummary({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-faint">Past Treatments</label>
+            <label className="block text-xs font-semibold text-faint">Prior therapies</label>
             <TagEditor
               tags={editedPriorTreatments}
               onChange={(newTags) => {
@@ -346,12 +406,12 @@ function ProfileSummary({
               placeholder="e.g. Chemotherapy"
             />
             {editedTimeline.length > 0 && (
-              <div className="mt-3.5 space-y-2.5 border border-border-subtle p-3 rounded-lg bg-muted/20">
-                <span className="block text-[10px] font-bold text-faint border-b border-border-subtle pb-1 font-body">
-                  Configure Treatment Timing
+              <div className="mt-3.5 space-y-3 pt-2 divider">
+                <span className="block text-[10px] font-bold text-faint font-body">
+                  Therapy timeline
                 </span>
                 {editedTimeline.map((item, idx) => (
-                  <div key={idx} className="space-y-1.5 p-2 bg-surface rounded-md border border-border-subtle text-xs">
+                  <div key={idx} className="space-y-1.5 py-2 border-b border-border-subtle text-xs last:border-0">
                     <div className="flex justify-between items-center">
                       <span className="font-semibold text-foreground font-body">{item.name}</span>
                       <label className="flex items-center gap-1 cursor-pointer">
@@ -383,7 +443,7 @@ function ProfileSummary({
                               prev.map((t, i) => (i === idx ? { ...t, endDate: val } : t))
                             );
                           }}
-                          className="w-full bg-background border border-border rounded px-1.5 py-0.5 text-[11px] text-foreground focus:outline-none"
+                          className="field-input text-[11px]"
                         />
                       </div>
                     )}
@@ -394,7 +454,7 @@ function ProfileSummary({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-faint">Interests/Focus</label>
+            <label className="block text-xs font-semibold text-faint">Treatment objectives</label>
             <TagEditor
               tags={editedInterests}
               onChange={setEditedInterests}
@@ -428,13 +488,13 @@ function ProfileSummary({
       label: "Metastasis",
       value:
         profile.hasMetastaticDisease === false
-          ? "None noted"
+          ? "Not documented"
           : profile.hasMetastaticDisease === true
           ? "Present"
           : null,
     },
     {
-      label: "Looking for",
+      label: "Objectives",
       value:
         profile.interests.length > 0 ? profile.interests.join(", ") : null,
     },
@@ -447,27 +507,27 @@ function ProfileSummary({
           id="profile-heading"
           className="font-display text-xl text-foreground text-pretty font-semibold"
         >
-          What we understood
+          Extracted profile
         </h2>
         <button
           type="button"
           onClick={() => setIsEditing(true)}
-          className="text-xs font-semibold text-primary border border-primary/20 hover:bg-muted hover:border-primary/40 rounded px-2.5 py-1 bg-surface transition-colors focus:outline-none focus:ring-1 focus:ring-primary font-body"
+          className="btn-ghost text-xs"
         >
-          Edit Details
+          Edit profile
         </button>
       </div>
       <p className="section-hint mb-5 font-body">
-        Please confirm these details look right before you review any trials.
+        Verify this information before reviewing matched trials.
       </p>
 
-      <dl>
+      <dl className="profile-spec">
         {rows.map((row) => (
-          <div key={row.label} className="profile-row">
-            <dt className="profile-label">{row.label}</dt>
-            <dd className="profile-value">
+          <div key={row.label} className="contents">
+            <dt>{row.label}</dt>
+            <dd>
               {row.value ?? (
-                <span className="text-faint italic font-body">Not mentioned in notes</span>
+                <span className="text-faint italic">Not provided</span>
               )}
             </dd>
           </div>
@@ -476,7 +536,7 @@ function ProfileSummary({
 
       {profile.priorTreatmentsTimeline && profile.priorTreatmentsTimeline.length > 0 && (
         <div className="mt-5 pt-4 border-t border-border-subtle">
-          <span className="block text-xs font-semibold text-foreground mb-3 flex items-center gap-1 font-body">⏱️ Treatment Timeline</span>
+          <span className="block text-xs font-medium text-faint mb-3 font-body uppercase tracking-wider">Treatment timeline</span>
           <div className="relative border-l border-border pl-4 space-y-3.5 ml-1.5">
             {profile.priorTreatmentsTimeline.map((item, idx) => {
               const dateStr = item.ongoing
@@ -503,40 +563,158 @@ function ProfileSummary({
   );
 }
 
+type WhoSearchState = "idle" | "loading" | "success" | "empty" | "error";
+
+const REGISTRY_DETAILS: Record<
+  MatchResponse["registrySummaries"][number]["registry"],
+  { label: string; href: string }
+> = {
+  "ClinicalTrials.gov": {
+    label: "ClinicalTrials.gov",
+    href: "https://clinicaltrials.gov",
+  },
+  "EU-CTR": {
+    label: "EU Clinical Trials Register",
+    href: "https://www.clinicaltrialsregister.eu",
+  },
+  "WHO ICTRP": {
+    label: "WHO International Trials Portal",
+    href: "https://trialsearch.who.int",
+  },
+  ISRCTN: {
+    label: "ISRCTN",
+    href: "https://www.isrctn.com",
+  },
+};
+
+function registryStatusMessage(
+  summary: MatchResponse["registrySummaries"][number],
+  whoSearchState: WhoSearchState
+): { tone: "success" | "neutral" | "warning" | "loading"; text: string } {
+  if (summary.registry === "WHO ICTRP" && whoSearchState === "loading") {
+    return {
+      tone: "loading",
+      text: "Querying WHO ICTRP",
+    };
+  }
+
+  if (summary.error && summary.error !== "WHO_ICTRP_BROWSER_REQUIRED") {
+    return {
+      tone: "warning",
+      text: "Connection unavailable. Other registries included.",
+    };
+  }
+
+  if (summary.registry === "WHO ICTRP" && whoSearchState === "error") {
+    return {
+      tone: "warning",
+      text: "WHO search unavailable from this environment. See who.int directly.",
+    };
+  }
+
+  if (summary.registry === "WHO ICTRP" && whoSearchState === "empty") {
+    return {
+      tone: "neutral",
+      text: "No matching studies identified",
+    };
+  }
+
+  if (summary.trialCount > 0) {
+    return {
+      tone: "success",
+      text: `Found ${summary.trialCount} ${
+        summary.trialCount === 1 ? "study" : "studies"
+      } potentially eligible`,
+    };
+  }
+
+  return {
+    tone: "neutral",
+    text: "No matches for your search right now",
+  };
+}
+
 function RegistryStatus({
   summaries,
+  whoSearchState,
 }: {
   summaries: MatchResponse["registrySummaries"];
+  whoSearchState: WhoSearchState;
 }) {
-  const available = summaries.filter((s) => !s.error && s.trialCount > 0);
-  const unavailable = summaries.filter((s) => s.error);
+  const responded = summaries.filter(
+    (summary) =>
+      summary.trialCount > 0 ||
+      (summary.registry === "WHO ICTRP" && whoSearchState === "loading")
+  );
+  const totalFound = summaries.reduce(
+    (count, summary) => count + summary.trialCount,
+    0
+  );
 
   return (
-    <section aria-labelledby="sources-heading" className="info-card">
-      <h2 id="sources-heading" className="section-label">
-        Where we searched
+    <section aria-labelledby="sources-heading" className="pt-2">
+      <h2 id="sources-heading" className="font-display text-xl text-foreground">
+        Registry coverage
       </h2>
-      <ul className="mt-3 space-y-2">
-        {summaries.map((summary) => (
-          <li
-            key={summary.registry}
-            className="flex flex-wrap items-baseline justify-between gap-2"
-          >
-            <span className="registry-chip">{summary.registry}</span>
-            <span className="section-hint text-sm font-body">
-              {summary.error
-                ? "Could not reach this registry"
-                : summary.trialCount === 0
-                  ? "No matching trials found"
-                  : `${summary.trialCount} ${summary.trialCount === 1 ? "trial" : "trials"} found`}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {unavailable.length > 0 && available.length > 0 && (
-        <p className="section-hint text-xs mt-4 pt-4 border-t border-border-subtle font-body">
-          Some registries were unavailable, but results below include trials from
-          the sources that responded.
+      <p className="section-hint mt-2 font-body leading-relaxed">
+        {totalFound} {totalFound === 1 ? "study" : "studies"} identified across{" "}
+        {summaries.length} registries prior to ranking.
+      </p>
+
+      <div className="registry-meter">
+        {summaries.map((summary) => {
+          const details = REGISTRY_DETAILS[summary.registry];
+          const status = registryStatusMessage(summary, whoSearchState);
+          const shortLabel =
+            summary.registry === "ClinicalTrials.gov"
+              ? "CT.gov"
+              : summary.registry === "EU-CTR"
+              ? "EU"
+              : summary.registry === "WHO ICTRP"
+              ? "WHO"
+              : "ISRCTN";
+
+          let fillClass = "registry-meter-fill";
+          let fillWidth = `${Math.min(100, Math.max(12, summary.trialCount * 4))}%`;
+          if (status.tone === "loading") {
+            fillClass += " registry-meter-fill-loading";
+            fillWidth = "30%";
+          } else if (status.tone === "warning") {
+            fillClass += " registry-meter-fill-warn";
+            fillWidth = "20%";
+          } else if (summary.trialCount === 0) {
+            fillClass += " registry-meter-fill-empty";
+            fillWidth = "8%";
+          }
+
+          return (
+            <div key={summary.registry} className="registry-meter-row">
+              <a
+                href={details.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="registry-meter-label hover:text-primary transition-colors"
+                title={details.label}
+              >
+                {shortLabel}
+              </a>
+              <div className="registry-meter-track" title={status.text}>
+                <div
+                  className={fillClass}
+                  style={{ width: fillWidth }}
+                />
+              </div>
+              <span className="registry-meter-count">
+                {status.tone === "loading" ? "--" : summary.trialCount}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {responded.length > 0 && responded.length < summaries.length && (
+        <p className="section-hint text-xs mt-4 font-body leading-relaxed">
+          One or more registries returned no results or were unavailable. Rankings reflect available data.
         </p>
       )}
     </section>
@@ -545,185 +723,285 @@ function RegistryStatus({
 
 function generatePersonalizedQuestions(profile: PatientProfile, trial: MatchedTrial): string[] {
   const qs = [
-    `What are the chances of success for a Phase ${trial.phase} study compared to my current treatment plan?`,
+    `What is the expected efficacy of this Phase ${trial.phase} protocol relative to current standard of care?`,
   ];
   if (profile.biomarkers.length > 0) {
-    qs.push(`Does this trial specifically target my biomarkers (${profile.biomarkers.join(", ")})?`);
+    qs.push(`Does eligibility require or target the following biomarkers: ${profile.biomarkers.join(", ")}?`);
   }
   if (profile.priorTreatments.length > 0) {
-    qs.push(`Since I previously received ${profile.priorTreatments.join(", ")}, will that interfere with my eligibility or response in this study?`);
+    qs.push(`How do prior therapies (${profile.priorTreatments.join(", ")}) affect eligibility and expected response?`);
   }
   if (profile.stage) {
-    qs.push(`Is this trial designed for patients at cancer Stage ${profile.stage}?`);
+    qs.push(`Is this protocol appropriate for patients at stage ${profile.stage}?`);
   }
   if (trial.locations.length > 0) {
-    qs.push(`Where would I need to travel for treatments and check-ups, and is travel support available?`);
+    qs.push(`What travel is required for treatment and surveillance visits, and is logistical support available?`);
   }
   return qs;
 }
 
+function SimplifiedTrialGuideView({
+  guide,
+  onShowOriginal,
+}: {
+  guide: SimplifiedTrialGuide;
+  onShowOriginal: () => void;
+}) {
+  return (
+    <div className="mt-4 space-y-4">
+      <p className="text-base text-foreground leading-relaxed font-body">
+        {guide.headline}
+      </p>
+
+      {guide.goodFit && (
+        <div className="callout">
+          <p className="guide-heading mb-1">Clinical discussion points</p>
+          <p>{guide.goodFit}</p>
+        </div>
+      )}
+
+      {guide.studyBasics.length > 0 && (
+        <div className="guide-block">
+          <p className="guide-heading">Study overview</p>
+          <ul className="space-y-1.5 text-sm text-foreground font-body list-disc pl-4">
+            {guide.studyBasics.map((item) => (
+              <li key={item} className="leading-relaxed">{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {guide.whatToExpect.length > 0 && (
+        <div className="guide-block">
+          <p className="guide-heading">Participation expectations</p>
+          <ul className="space-y-1.5 text-sm text-foreground font-body list-disc pl-4">
+            {guide.whatToExpect.map((item) => (
+              <li key={item} className="leading-relaxed">{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {guide.goodToKnow && (
+        <p className="text-sm text-faint leading-relaxed font-body">
+          <span className="text-foreground">Important considerations: </span>
+          {guide.goodToKnow}
+        </p>
+      )}
+
+      {guide.askYourDoctor.length > 0 && (
+        <div className="guide-block">
+          <p className="guide-heading">Suggested consultation questions</p>
+          <ul className="space-y-2 text-sm text-foreground font-body">
+            {guide.askYourDoctor.map((q) => (
+              <li key={q} className="leading-relaxed italic">{q}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onShowOriginal}
+        className="btn-ghost text-xs mt-2"
+      >
+        View source registry text
+      </button>
+    </div>
+  );
+}
+
 function TrialCard({
   trial,
+  profile,
   index,
   isSaved,
   onSaveToggle,
 }: {
   trial: MatchedTrial;
+  profile: PatientProfile;
   index: number;
   isSaved: boolean;
   onSaveToggle: () => void;
 }) {
   const [showBreakdown, setShowBreakdown] = useState(false);
-  const [simpleSummary, setSimpleSummary] = useState<string | null>(null);
-  const [loadingSimple, setLoadingSimple] = useState(false);
+  const [simplifiedGuide, setSimplifiedGuide] = useState<SimplifiedTrialGuide | null>(null);
+  const [showOriginalSummary, setShowOriginalSummary] = useState(false);
+  const [simplifyError, setSimplifyError] = useState<string | null>(null);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [isSimplifying, startSimplify] = useTransition();
   const bd = trial.scoreBreakdown;
 
-  const handleSimplify = async () => {
-    if (simpleSummary) {
-      setSimpleSummary(null);
-      return;
-    }
-    setLoadingSimple(true);
-    try {
-      const simplified = await getSimplifiedSummaryAction(trial.trialId, trial.summary);
-      setSimpleSummary(simplified);
-    } catch (err) {
-      console.error(err);
-      setSimpleSummary("Failed to generate simplified summary. Please try again.");
-    } finally {
-      setLoadingSimple(false);
-    }
+  const fullSummary = normalizeTrialSummary(trial.summary);
+  const isLongSummary = fullSummary.length > TRIAL_SUMMARY_DISPLAY_MAX;
+  const displaySummary =
+    summaryExpanded || !isLongSummary
+      ? fullSummary
+      : truncateTrialSummary(fullSummary);
+
+  const handleSimplify = () => {
+    setSimplifyError(null);
+    setShowOriginalSummary(false);
+    startSimplify(async () => {
+      const result = await getSimplifiedSummaryAction({
+        trialTitle: trial.title,
+        trialSummary: trial.summary,
+        trialPhase: trial.phase,
+        trialStatus: trial.status,
+        matchScore: trial.matchScore,
+        profile,
+      });
+
+      if ("error" in result) {
+        setSimplifyError(result.error);
+        return;
+      }
+
+      setSimplifiedGuide(result.guide);
+    });
   };
+
+  const indexLabel = String(index + 1).padStart(2, "0");
 
   return (
     <li
       className="trial-card trial-enter font-body"
       style={{ animationDelay: `${index * 50}ms` }}
     >
-      <article aria-labelledby={`trial-title-${trial.trialId}`}>
-        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="registry-chip">{trial.registry}</span>
-              <span className="status-pill-open">
-                {formatTrialStatus(trial.status)}
-              </span>
-              {trial.phase !== "Not specified" && (
-                <span className="section-hint text-xs font-body">
-                  {trial.phase}
-                </span>
-              )}
-              {trial.distance !== null && (
-                <span className="inline-flex items-center gap-1 text-xs text-primary bg-primary/5 border border-primary/10 px-2 py-0.5 rounded font-medium">
-                  📍 {trial.distance} miles away
+      <article aria-labelledby={`trial-title-${trial.trialId}`} className="trial-entry">
+        <span className="trial-index" aria-hidden="true">
+          {indexLabel}
+        </span>
+
+        <div className="min-w-0 space-y-3">
+          <p className="meta-strip">
+            {[
+              trial.registry,
+              formatTrialStatus(trial.status),
+              trial.phase !== "Not specified" ? trial.phase : null,
+              trial.distance !== null ? `${trial.distance} mi` : null,
+            ]
+              .filter(Boolean)
+              .join(", ")}
+          </p>
+
+          <h3
+            id={`trial-title-${trial.trialId}`}
+            className="trial-title"
+          >
+            {stripEmDashes(trial.title)}
+          </h3>
+
+            {simplifiedGuide && !showOriginalSummary ? (
+              <SimplifiedTrialGuideView
+                guide={simplifiedGuide}
+                onShowOriginal={() => setShowOriginalSummary(true)}
+              />
+            ) : (
+              <>
+                <p className="section-hint mt-3 leading-relaxed break-words font-body">
+                  {displaySummary}
+                </p>
+                {isLongSummary && (
+                  <button
+                    type="button"
+                    onClick={() => setSummaryExpanded((prev) => !prev)}
+                    className="text-xs font-semibold text-primary hover:underline mt-1 cursor-pointer font-body"
+                  >
+                    {summaryExpanded ? "Collapse" : "Expand summary"}
+                  </button>
+                )}
+                {simplifiedGuide && showOriginalSummary && (
+                  <button
+                    type="button"
+                    onClick={() => setShowOriginalSummary(false)}
+                    className="text-xs font-semibold text-primary hover:underline mt-2 cursor-pointer font-body"
+                  >
+                    Return to patient summary
+                  </button>
+                )}
+              </>
+            )}
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSimplify}
+                disabled={isSimplifying}
+                className="btn-ghost text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSimplifying
+                  ? "Generating summary"
+                  : simplifiedGuide
+                    ? "Regenerate summary"
+                    : "Generate patient summary"}
+              </button>
+              {simplifiedGuide && !showOriginalSummary && (
+                <span className="text-[10px] text-faint font-body">
+                  Profile-specific summary; not medical advice
                 </span>
               )}
             </div>
-
-            <h3
-              id={`trial-title-${trial.trialId}`}
-              className="font-display text-lg sm:text-xl text-foreground leading-snug text-pretty font-semibold"
-            >
-              {trial.title}
-            </h3>
-
-            <p className="section-hint mt-3 leading-relaxed break-words font-body">
-              {trial.summary}
-              {trial.summary.length >= 400 && "…"}
-            </p>
-
-            {simpleSummary && (
-              <div className="mt-3 p-3.5 bg-primary/5 border border-primary/10 rounded-lg text-xs leading-relaxed text-body-muted">
-                <span className="font-semibold text-primary block mb-1">✨ Simplified Summary:</span>
-                {simpleSummary}
-              </div>
+            {simplifyError && (
+              <p className="text-xs text-destructive mt-1 font-body">{simplifyError}</p>
             )}
 
             {trial.biomarkerGates && trial.biomarkerGates.length > 0 && (
-              <div className="mt-3.5 p-3.5 bg-primary/5 border border-primary/10 rounded-xl text-xs space-y-2.5">
-                <span className="font-semibold text-primary flex items-center gap-1.5">
-                  🧬 Biomarker logic gate verification
-                </span>
-                <div className="flex flex-wrap gap-2.5">
+              <div className="mt-5 text-xs space-y-3">
+                <p className="guide-heading">Biomarker eligibility</p>
+                <ul className="space-y-3">
                   {trial.biomarkerGates.map((gate, idx) => (
-                    <div
-                      key={idx}
-                      className={`inline-flex flex-col p-2.5 rounded-lg border text-xs bg-surface ${
-                        gate.passed
-                          ? "border-emerald-500/20 text-emerald-800 dark:text-emerald-400"
-                          : "border-amber-500/20 text-amber-800 dark:text-amber-400"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-4 font-bold border-b border-border-subtle pb-1 mb-1">
-                        <span>Gate: {gate.gateType}</span>
-                        <span className={gate.passed ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
-                          {gate.passed ? "Passed ✓" : "Failed ✗"}
+                    <li key={idx} className="space-y-1">
+                      <p className="text-foreground font-medium">
+                        {gate.gateType}{" "}
+                        <span className="text-faint font-normal">
+                          ({gate.passed ? "criteria met" : "criteria not met"})
                         </span>
-                      </div>
-                      <div className="space-y-1">
+                      </p>
+                      <ul className="space-y-1 pl-3">
                         {gate.rules.map((rule, ridx) => (
-                          <div key={ridx} className="flex justify-between gap-4 text-[10px] text-faint">
+                          <li key={ridx} className="flex justify-between gap-4 text-faint">
                             <span>{rule.marker} ({rule.expected})</span>
-                            <span className={`font-semibold capitalize ${
-                              rule.status === "matched" ? "text-emerald-600 dark:text-emerald-400" : rule.status === "mismatched" ? "text-rose-600" : "text-faint"
-                            }`}>{rule.status}</span>
-                          </div>
+                            <span className="capitalize">{rule.status}</span>
+                          </li>
                         ))}
-                      </div>
-                    </div>
+                      </ul>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
             {trial.washoutChecks && trial.washoutChecks.length > 0 && (
-              <div className="mt-3.5 p-3.5 bg-primary/5 border border-primary/10 rounded-xl text-xs space-y-2.5">
-                <span className="font-semibold text-primary flex items-center gap-1.5">
-                  ⏱️ Washout period compatibility check
-                </span>
-                <div className="space-y-2">
+              <div className="mt-5 text-xs space-y-2">
+                <p className="guide-heading">Therapy washout period</p>
+                <ul className="divide-y divide-border-subtle">
                   {trial.washoutChecks.map((check, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border text-xs bg-surface ${
-                        check.status === "eligible"
-                          ? "border-emerald-500/20 text-emerald-800 dark:text-emerald-400"
-                          : check.status === "ineligible"
-                          ? "border-rose-500/20 text-rose-800 dark:text-rose-400"
-                          : "border-amber-500/20 text-amber-800 dark:text-amber-400"
-                      }`}
-                    >
-                      <div>
-                        <span className="font-semibold text-foreground">{check.treatmentName}</span> Washout:{" "}
-                        <span className="font-mono font-medium text-foreground">{check.requiredDays} days required</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] font-bold">
-                        {check.status === "eligible" && (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-body">Eligible ({check.actualDays} days elapsed) ✓</span>
-                        )}
-                        {check.status === "ineligible" && (
-                          <span className="text-rose-600 dark:text-rose-400 font-body">Ineligible ({check.actualDays} days elapsed) ✗</span>
-                        )}
-                        {check.status === "unknown" && (
-                          <span className="text-amber-600 dark:text-amber-400 font-body">Date Unspecified (clarify with doctor) ⚠️</span>
-                        )}
-                      </div>
-                    </div>
+                    <li key={idx} className="check-row">
+                      <span>
+                        <span className="font-medium text-foreground">{check.treatmentName}</span>
+                        {" "}
+                        requires {check.requiredDays}-day washout
+                      </span>
+                      <span className="text-faint">
+                        {check.status === "eligible" && `Meets requirement (${check.actualDays} days elapsed)`}
+                        {check.status === "ineligible" && `Does not meet requirement (${check.actualDays} days elapsed)`}
+                        {check.status === "unknown" && "Insufficient date information"}
+                      </span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
             {trial.locations.length > 0 && (
               <div className="mt-4">
-                <p className="section-label text-xs mb-1.5">
-                  Study locations
-                </p>
-                <ul className="space-y-1">
+                <p className="guide-heading mb-1.5">Study sites</p>
+                <ul className="space-y-0.5">
                   {trial.locations.map((loc, i) => (
                     <li
                       key={`${trial.trialId}-loc-${i}`}
-                      className="section-hint text-sm break-words font-body"
+                      className="section-hint text-sm break-words"
                     >
                       {[loc.facility, loc.city, loc.state, loc.country]
                         .filter(Boolean)
@@ -733,60 +1011,42 @@ function TrialCard({
                 </ul>
               </div>
             )}
-          </div>
+        </div>
 
-          <div className="shrink-0 flex sm:flex-col items-center sm:items-end gap-3 sm:gap-2">
-            <button
-              type="button"
-              onClick={() => setShowBreakdown(!showBreakdown)}
-              className={`${matchBadgeClass(trial.matchScore)} cursor-pointer transition-transform hover:scale-[1.03] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2`}
-              aria-label={`Match score: ${trial.matchScore}%. Click to view breakdown.`}
-            >
-              <span className="match-score-num">
-                {trial.matchScore}%
-              </span>
-              <span className="match-score-label flex items-center gap-0.5">
-                {matchLabel(trial.matchScore)}
-                <span className="text-[9px] opacity-70 transition-transform duration-200" style={{ transform: showBreakdown ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-              </span>
-            </button>
+        <div className="trial-actions">
+          <ScoreRing
+            score={trial.matchScore}
+            label={matchLabel(trial.matchScore)}
+            expanded={showBreakdown}
+            onClick={() => setShowBreakdown(!showBreakdown)}
+          />
 
-            <button
-              type="button"
-              onClick={handleSimplify}
-              disabled={loadingSimple}
-              className="btn-secondary text-xs w-full py-1.5 flex items-center justify-center gap-1 disabled:opacity-50 font-body"
-            >
-              {loadingSimple ? "Simplifying..." : simpleSummary ? "Hide Summary" : "✨ Simplify Description"}
-            </button>
-
+          <div className="flex flex-col items-end gap-2 text-right">
             <button
               type="button"
               onClick={onSaveToggle}
-              className={`text-xs w-full py-1.5 border rounded-lg font-medium transition-colors font-body ${
-                isSaved
-                  ? "bg-accent border-accent text-on-primary hover:bg-accent-dark hover:border-accent-dark"
-                  : "bg-surface border-border text-primary hover:bg-muted"
+              className={`text-xs font-body underline underline-offset-4 ${
+                isSaved ? "text-accent decoration-accent" : "text-primary decoration-border"
               }`}
             >
-              {isSaved ? "Saved to Board" : "Save to Board"}
+              {isSaved ? "On shortlist" : "Add to shortlist"}
             </button>
 
             <a
               href={safeUrl(trial.url)}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-secondary text-sm whitespace-nowrap font-body w-full text-center"
+              className="btn-secondary text-xs whitespace-nowrap"
             >
-              View details
+              Open registry record
             </a>
           </div>
         </div>
 
         {showBreakdown && bd && (
-          <div className="mt-5 p-4 bg-muted/40 border border-border-subtle rounded-xl text-xs space-y-3 animate-fade-in">
+          <div className="col-span-full mt-2 pt-5 border-t border-border-subtle text-xs space-y-3">
             <div className="flex items-center justify-between border-b border-border-subtle pb-2 mb-1">
-              <span className="font-semibold text-foreground text-sm">Matching Score Breakdown</span>
+              <span className="font-semibold text-foreground text-sm">Match score components</span>
               <button 
                 type="button" 
                 onClick={() => setShowBreakdown(false)}
@@ -798,69 +1058,69 @@ function TrialCard({
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-faint">
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Baseline Score (standard for condition match)</span>
+                <span>Baseline (condition match)</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.baseline}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Diagnosis Text Similarity Match</span>
+                <span>Diagnosis similarity</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.diagnosisMatch}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Biomarkers Matching</span>
+                <span>Biomarker alignment</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.biomarkerMatch}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Biomarker Disqualifier Penalties</span>
+                <span>Biomarker exclusion penalties</span>
                 <span className={`font-mono font-semibold ${bd.biomarkerPenalties > 0 ? "text-destructive" : "text-foreground"}`}>
                   {bd.biomarkerPenalties > 0 ? `-${bd.biomarkerPenalties}` : "0"}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Interests & Targets Match</span>
+                <span>Treatment objective alignment</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.interestsMatch}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Prior Treatments Alignment</span>
+                <span>Prior therapy alignment</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.priorTreatmentsMatch}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Cancer Stage Specificity Match</span>
+                <span>Disease stage alignment</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.stageMatch}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Stage Penalties (metastatic conflicts)</span>
+                <span>Stage exclusion penalties</span>
                 <span className={`font-mono font-semibold ${bd.stagePenalties > 0 ? "text-destructive" : "text-foreground"}`}>
                   {bd.stagePenalties > 0 ? `-${bd.stagePenalties}` : "0"}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Study Phase Bonus (II/III/IV)</span>
+                <span>Study phase weighting</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.phaseBonus}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Regional/Location Match</span>
+                <span>Geographic proximity</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.locationMatch}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Patient Gender Matching</span>
+                <span>Sex eligibility alignment</span>
                 <span className={`font-mono font-semibold ${bd.sexMatch < 0 ? "text-destructive" : "text-foreground"}`}>
                   {bd.sexMatch >= 0 ? `+${bd.sexMatch}` : bd.sexMatch}
                 </span>
               </div>
               {bd.biomarkerGatesMatch !== undefined && bd.biomarkerGatesMatch > 0 && (
                 <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                  <span>Biomarker Logic Gate Match Bonus</span>
+                  <span>Biomarker gate bonus</span>
                   <span className="font-mono text-foreground font-semibold">+{bd.biomarkerGatesMatch}</span>
                 </div>
               )}
               {bd.washoutPenalties !== undefined && bd.washoutPenalties > 0 && (
                 <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                  <span>Prior Treatment Washout Penalties</span>
+                  <span>Washout period penalties</span>
                   <span className="font-mono text-destructive font-semibold font-body">-{bd.washoutPenalties}</span>
                 </div>
               )}
-              <div className="flex justify-between py-1 border-b border-border-subtle/40 font-semibold text-foreground bg-primary/5 px-2 rounded mt-1">
-                <span>Total Match Score</span>
+              <div className="flex justify-between py-2 border-t border-border-subtle font-semibold text-foreground mt-1">
+                <span>Composite match score</span>
                 <span className="font-mono text-primary font-bold text-sm">{trial.matchScore}%</span>
               </div>
             </div>
@@ -909,19 +1169,19 @@ function ProfileSelector({
     localStorage.setItem("saved_profiles", JSON.stringify(updated));
     setProfileNameInput("");
     setShowSaveModal(false);
-    alert("Patient profile saved successfully!");
+    alert("Patient profile saved to local storage.");
   };
 
   return (
-    <div className="info-card space-y-3">
-      <div className="flex justify-between items-center border-b border-border-subtle pb-2">
-        <h3 className="section-label">Saved Profiles</h3>
+    <div className="space-y-3 pt-2">
+      <div className="flex justify-between items-center pb-2">
+        <h3 className="font-display text-lg text-foreground">Saved patient profiles</h3>
         <button
           type="button"
           onClick={() => setShowSaveModal(true)}
           className="text-xs font-semibold text-primary hover:underline cursor-pointer"
         >
-          + Save Current
+          Save current
         </button>
       </div>
 
@@ -935,45 +1195,45 @@ function ProfileSelector({
               onSelectProfile(selected.profile);
             }
           }}
-          className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:ring-1 focus:ring-primary focus:outline-none font-body cursor-pointer"
+          className="field-select text-xs font-body"
           defaultValue=""
         >
-          <option value="" disabled>Select a saved profile...</option>
+          <option value="" disabled>Select a saved profile</option>
           {profiles.map(p => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
       ) : (
-        <p className="text-xs text-faint italic font-body">No profiles saved yet.</p>
+        <p className="text-xs text-faint italic font-body">No saved profiles on this device.</p>
       )}
 
       {showSaveModal && (
         <div className="fixed inset-0 bg-foreground/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-surface border border-border-subtle p-5 rounded-2xl shadow-2xl max-w-sm w-full space-y-4">
-            <h4 className="font-display text-base font-bold text-foreground">Save Patient Profile</h4>
+          <div className="modal-panel">
+            <h4 className="font-display text-base font-bold text-foreground">Save patient profile</h4>
             <p className="text-xs text-faint font-body">
-              Enter a nickname to save this profile details locally in your browser.
+              Assign a label. Data is stored locally in this browser only.
             </p>
             <input
               type="text"
-              placeholder="e.g. Grandma's Case"
+              placeholder="e.g. Case reference 2026-01"
               value={profileNameInput}
               onChange={(e) => setProfileNameInput(e.target.value)}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+              className="field-input text-xs"
               required
             />
-            <div className="flex justify-end gap-2 text-xs font-semibold">
+            <div className="flex justify-end gap-4 text-xs">
               <button
                 type="button"
                 onClick={() => setShowSaveModal(false)}
-                className="px-3 py-2 border border-border rounded-lg hover:bg-muted text-faint transition-colors cursor-pointer"
+                className="btn-ghost text-xs"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={saveCurrentProfile}
-                className="px-3 py-2 bg-primary text-on-primary rounded-lg hover:bg-secondary transition-colors cursor-pointer"
+                className="btn-primary text-xs min-h-9 px-4"
               >
                 Save
               </button>
@@ -1004,26 +1264,26 @@ function BiomarkerBooster({
   };
 
   if (diagnosis.includes("breast")) {
-    addSuggestion("ER negative", "Unlocks triple-negative or hormone-receptor targeted trials");
-    addSuggestion("ER positive", "Matches with endocrine or CDK4/6 inhibitor trials");
-    addSuggestion("PIK3CA positive", "Qualifies for PI3K alpha-selective inhibitor studies");
-    addSuggestion("BRCA1 positive", "Unlocks PARP inhibitor trials (olaparib/talazoparib)");
-    addSuggestion("BRCA2 positive", "Unlocks PARP inhibitor trials (olaparib/talazoparib)");
+    addSuggestion("ER negative", "May expand eligibility for triple-negative and HR-negative trials");
+    addSuggestion("ER positive", "Relevant for endocrine and CDK4/6 inhibitor protocols");
+    addSuggestion("PIK3CA positive", "Required for PI3K-alpha inhibitor eligibility");
+    addSuggestion("BRCA1 positive", "Enables PARP inhibitor trial consideration");
+    addSuggestion("BRCA2 positive", "Enables PARP inhibitor trial consideration");
   } else if (diagnosis.includes("lung") || diagnosis.includes("nsclc")) {
-    addSuggestion("EGFR positive", "Matches with 3rd-generation EGFR TKIs (osimertinib)");
-    addSuggestion("ALK positive", "Matches with ALK inhibitors (alectinib/lorlatinib)");
-    addSuggestion("KRAS positive", "Matches with KRAS G12C/G12D targeted therapies");
-    addSuggestion("RET positive", "Unlocks selective RET inhibitor studies (selpercatinib)");
-    addSuggestion("ROS1 positive", "Matches with ROS1 targeted therapies");
-    addSuggestion("PD-L1 positive", "Matches with frontline immunotherapy checkpoint inhibitors");
+    addSuggestion("EGFR positive", "Required for EGFR tyrosine kinase inhibitor trials");
+    addSuggestion("ALK positive", "Required for ALK inhibitor protocols");
+    addSuggestion("KRAS positive", "Relevant for KRAS G12C/G12D targeted studies");
+    addSuggestion("RET positive", "Required for selective RET inhibitor trials");
+    addSuggestion("ROS1 positive", "Required for ROS1-directed therapy studies");
+    addSuggestion("PD-L1 positive", "Relevant for checkpoint inhibitor protocols");
   } else if (diagnosis.includes("colon") || diagnosis.includes("colorectal")) {
-    addSuggestion("KRAS wild-type", "Confirms eligibility for anti-EGFR antibodies (cetuximab)");
-    addSuggestion("BRAF positive", "Matches with BRAF V600E combination therapies");
-    addSuggestion("MSI-high", "Matches with highly effective immunotherapy (pembrolizumab)");
+    addSuggestion("KRAS wild-type", "Required for anti-EGFR antibody eligibility");
+    addSuggestion("BRAF positive", "Relevant for BRAF V600E combination protocols");
+    addSuggestion("MSI-high", "Enables immunotherapy trial consideration");
   } else {
-    addSuggestion("MSI-high", "Matches with tumor-agnostic immunotherapy trials");
-    addSuggestion("NTRK positive", "Qualifies for TRK inhibitor therapies (larotrectinib)");
-    addSuggestion("TMB-high", "Matches with checkpoint immunotherapy studies");
+    addSuggestion("MSI-high", "Relevant for tumor-agnostic immunotherapy trials");
+    addSuggestion("NTRK positive", "Required for TRK inhibitor protocols");
+    addSuggestion("TMB-high", "Relevant for checkpoint immunotherapy studies");
   }
 
   if (suggestions.length === 0) return null;
@@ -1034,31 +1294,28 @@ function BiomarkerBooster({
       biomarkers: [...profile.biomarkers, marker]
     };
     onUpdate(updatedProfile);
-    alert(`Added "${marker}" to biomarkers. Re-calculating matches...`);
+    alert(`"${marker}" added to biomarker profile. Refreshing match results.`);
   };
 
   return (
-    <div className="info-card space-y-3 bg-primary/5 border border-primary/10 text-left">
-      <div className="flex items-center gap-1.5 border-b border-primary/10 pb-2">
-        <span className="text-sm">💡</span>
-        <h3 className="section-label text-primary font-bold">Match Booster</h3>
-      </div>
+    <div className="pt-4 space-y-3 text-left divider">
+      <h3 className="font-display text-lg text-foreground mt-4">Suggested biomarker testing</h3>
       <p className="text-[11px] text-faint leading-relaxed font-body">
-        Studies in your diagnosis category often require these tests. Add them if you know the results to see more matches:
+        Trials for this diagnosis frequently require the following markers. Add confirmed results to refine matching:
       </p>
       <ul className="space-y-2.5 pt-1">
         {suggestions.slice(0, 3).map((s, idx) => (
-          <li key={idx} className="flex justify-between items-start gap-3 bg-surface p-2 rounded-lg border border-border-subtle text-[11px] font-body font-medium">
+          <li key={idx} className="flex justify-between items-start gap-3 py-2 border-b border-border-subtle text-[11px] font-body last:border-0">
             <div className="space-y-0.5">
-              <span className="font-bold text-foreground block">{s.marker}</span>
-              <span className="text-[10px] text-faint block leading-tight font-normal">{s.reason}</span>
+              <span className="font-medium text-foreground block">{s.marker}</span>
+              <span className="text-[10px] text-faint block leading-tight">{s.reason}</span>
             </div>
             <button
               type="button"
               onClick={() => handleAddMarker(s.marker)}
-              className="text-[10px] text-primary hover:bg-primary/10 border border-primary/20 rounded px-1.5 py-0.5 font-bold transition-colors shrink-0 cursor-pointer"
+              className="btn-ghost text-[10px] shrink-0"
             >
-              + Add
+              Add
             </button>
           </li>
         ))}
@@ -1072,13 +1329,74 @@ export default function ResultsDashboard({
   onProfileUpdate,
   isUpdating,
 }: ResultsDashboardProps) {
-  const { profile, trials } = data;
-  const [selectedRadius, setSelectedRadius] = useState<number | "anywhere">("anywhere");
+  const [displayData, setDisplayData] = useState(data);
+  const [whoSearchState, setWhoSearchState] = useState<WhoSearchState>("idle");
+  const whoSearchStartedRef = useRef(false);
+  const { profile, trials } = displayData;
   const [activeTab, setActiveTab] = useState<"results" | "board">("results");
   const [savedTrials, setSavedTrials] = useState<Array<{ trial: MatchedTrial; boardStatus: string }>>([]);
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [newMatchesCount, setNewMatchesCount] = useState(0);
   const [lastSearchDate, setLastSearchDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDisplayData(data);
+    setWhoSearchState("idle");
+    whoSearchStartedRef.current = false;
+  }, [data]);
+
+  useEffect(() => {
+    const whoSummary = data.registrySummaries.find(
+      (summary) => summary.registry === "WHO ICTRP"
+    );
+    const shouldSearchWho =
+      whoSummary &&
+      (whoSummary.error === "WHO_ICTRP_BROWSER_REQUIRED" ||
+        whoSummary.trialCount === 0);
+
+    if (!shouldSearchWho || whoSearchStartedRef.current) {
+      return;
+    }
+
+    whoSearchStartedRef.current = true;
+    let cancelled = false;
+    setWhoSearchState("loading");
+
+    const searchCondition =
+      data.queryTerms.slice(0, 2).join(" ") ||
+      data.profile.primaryDiagnosis ||
+      "cancer";
+
+    (async () => {
+      try {
+        const whoTrials = await queryWhoIctrpFromBrowser(searchCondition);
+        if (cancelled) return;
+
+        if (whoTrials.length === 0) {
+          setWhoSearchState("empty");
+          return;
+        }
+
+        const merged = await integrateWhoTrialsAction(
+          whoTrials,
+          data.profile,
+          data
+        );
+        if (cancelled) return;
+
+        setDisplayData(merged);
+        setWhoSearchState("success");
+      } catch {
+        if (!cancelled) {
+          setWhoSearchState("error");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
 
   useEffect(() => {
     const profileKey = `${profile.primaryDiagnosis}-${profile.age ?? ""}-${profile.sex}`;
@@ -1153,12 +1471,6 @@ export default function ResultsDashboard({
     saveToLocalStorage(newSaved);
   };
 
-  const filteredTrials = trials.filter((trial) => {
-    if (selectedRadius === "anywhere") return true;
-    if (trial.distance === null) return true;
-    return trial.distance <= selectedRadius;
-  });
-
   const columns = ["saved", "contacted", "screening", "enrolled", "disqualified"] as const;
   const colLabels: Record<typeof columns[number], string> = {
     saved: "Saved",
@@ -1194,42 +1506,35 @@ export default function ResultsDashboard({
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="flex-1">
-          <p className="section-label text-primary">Matching Workspace</p>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-            <div className="flex bg-muted/60 p-1 rounded-lg border border-border-subtle">
-              <button
-                type="button"
-                onClick={() => setActiveTab("results")}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  activeTab === "results"
-                    ? "bg-surface text-primary border border-border-subtle shadow-sm"
-                    : "text-faint hover:text-primary"
-                }`}
-              >
-                Matched Trials ({filteredTrials.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("board")}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  activeTab === "board"
-                    ? "bg-surface text-primary border border-border-subtle shadow-sm"
-                    : "text-faint hover:text-primary"
-                }`}
-              >
-                My Journey Board ({savedTrials.length})
-              </button>
-            </div>
-            {isUpdating && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold bg-muted/80 border border-primary/10 px-2 py-1 rounded-md animate-pulse">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                </span>
-                Updating matches…
+          <h2 className="font-display text-2xl text-foreground">
+            Search results
+            {data.mode && (
+              <span className="font-body text-sm font-normal text-faint ml-2">
+                ({data.mode === "patient" ? "patient" : "clinician"} mode)
               </span>
             )}
-          </div>
+          </h2>
+          <nav className="flex gap-6 mt-4 border-b border-border-subtle" aria-label="Results views">
+            <button
+              type="button"
+              onClick={() => setActiveTab("results")}
+              className={activeTab === "results" ? "mode-tab-active" : "mode-tab"}
+            >
+              Matched trials ({trials.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("board")}
+              className={activeTab === "board" ? "mode-tab-active" : "mode-tab"}
+            >
+              Shortlist ({savedTrials.length})
+            </button>
+          </nav>
+          {isUpdating && (
+            <p className="text-xs text-faint mt-3 animate-pulse font-body">
+              Refreshing match results
+            </p>
+          )}
         </div>
 
         <div className="flex gap-2">
@@ -1237,9 +1542,9 @@ export default function ResultsDashboard({
             <button
               type="button"
               onClick={() => setShowGuideModal(true)}
-              className="btn-secondary text-sm font-semibold whitespace-nowrap bg-primary/5 text-primary border border-primary/20 hover:bg-primary/10 flex items-center gap-1 font-body"
+              className="btn-secondary text-sm whitespace-nowrap font-body"
             >
-              📋 Doctor Discussion Guide ({savedTrials.length})
+              Consultation guide ({savedTrials.length})
             </button>
           )}
           <Link href="/" className="btn-secondary self-start shrink-0 font-body text-sm font-semibold">
@@ -1249,45 +1554,15 @@ export default function ResultsDashboard({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
-        <aside className="lg:col-span-4 xl:col-span-3 space-y-6 lg:sticky lg:top-8">
+        <aside className="lg:col-span-4 xl:col-span-3 aside-rail space-y-8 lg:sticky lg:top-8">
           <ProfileSelector currentProfile={profile} onSelectProfile={onProfileUpdate} />
           <BiomarkerBooster profile={profile} onUpdate={onProfileUpdate} />
-          <RegistryStatus summaries={data.registrySummaries} />
+          <RegistryStatus
+            summaries={displayData.registrySummaries}
+            whoSearchState={whoSearchState}
+          />
 
-          {profile.location && activeTab === "results" && (
-            <div className="info-card">
-              <h3 className="section-label">Geospatial Search Radius</h3>
-              <p className="section-hint text-xs mt-1 mb-3 font-body">Filter trials by distance from your location.</p>
-              <div className="space-y-3">
-                <input 
-                  type="range" 
-                  min="25" 
-                  max="500" 
-                  step="25"
-                  value={selectedRadius === "anywhere" ? 500 : selectedRadius} 
-                  onChange={(e) => setSelectedRadius(Number(e.target.value))}
-                  className="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                />
-                <div className="flex justify-between items-center text-xs font-semibold text-primary font-body">
-                  <span>25 mi</span>
-                  <span className="bg-primary/10 px-2.5 py-0.5 rounded border border-primary/20 text-xs">
-                    {selectedRadius === "anywhere" ? "Any distance" : `within ${selectedRadius} miles`}
-                  </span>
-                  <button 
-                    type="button"
-                    onClick={() => setSelectedRadius("anywhere")}
-                    className="text-primary hover:underline font-bold text-xs"
-                  >
-                    Reset
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="chart-panel">
-            <ProfileSummary profile={profile} onUpdate={onProfileUpdate} />
-          </div>
+          <ProfileSummary profile={profile} onUpdate={onProfileUpdate} />
         </aside>
 
         <div className="lg:col-span-8 xl:col-span-9">
@@ -1297,13 +1572,13 @@ export default function ResultsDashboard({
                 isUpdating ? "opacity-50 pointer-events-none" : "opacity-100"
               }`}
             >
-              {filteredTrials.length === 0 ? (
-                <div className="info-card text-center py-10">
-                  <p className="font-display text-lg text-foreground">
-                    No matching trials in range
+              {trials.length === 0 ? (
+                <div className="py-16 text-center">
+                  <p className="font-display text-2xl text-foreground">
+                    No matching studies identified
                   </p>
                   <p className="section-hint mt-2 max-w-sm mx-auto font-body">
-                    Try raising the search radius slider or modifying diagnosis, location, and biomarkers.
+                    Consider broadening diagnosis, location, or biomarker criteria and search again.
                   </p>
                 </div>
               ) : (
@@ -1313,17 +1588,15 @@ export default function ResultsDashboard({
                   </h2>
 
                   {newMatchesCount > 0 && (
-                    <div className="mb-5 p-4 bg-emerald-500/5 border border-emerald-500/20 text-emerald-800 dark:text-emerald-400 rounded-xl text-xs flex justify-between items-center font-body animate-fade-in">
-                      <div>
-                        <span className="font-bold block mb-0.5">🎉 New Trial Match Alert!</span>
-                        <span>
-                          We found <strong>{newMatchesCount} new matching {newMatchesCount === 1 ? "trial" : "trials"}</strong> registered since your last search on {lastSearchDate}.
-                        </span>
-                      </div>
+                    <div className="callout mb-6 flex justify-between items-start gap-4 text-xs font-body">
+                      <p>
+                        <span className="font-medium text-foreground">Updated since {lastSearchDate}. </span>
+                        {newMatchesCount} additional {newMatchesCount === 1 ? "study" : "studies"} identified since the prior search.
+                      </p>
                       <button
                         type="button"
                         onClick={() => setNewMatchesCount(0)}
-                        className="text-emerald-800 dark:text-emerald-400 hover:text-foreground font-bold text-sm px-2 py-1 cursor-pointer"
+                        className="btn-ghost text-xs shrink-0"
                       >
                         Dismiss
                       </button>
@@ -1331,10 +1604,11 @@ export default function ResultsDashboard({
                   )}
 
                   <ol className="space-y-5" aria-label="Matching clinical trials">
-                    {filteredTrials.map((trial, index) => (
+                    {trials.map((trial, index) => (
                       <TrialCard
                         key={`${trial.registry}-${trial.trialId}`}
                         trial={trial}
+                        profile={profile}
                         index={index}
                         isSaved={Boolean(savedTrials.find((t) => t.trial.trialId === trial.trialId))}
                         onSaveToggle={() => handleSaveToggle(trial)}
@@ -1343,70 +1617,64 @@ export default function ResultsDashboard({
                   </ol>
 
                   <p className="section-hint mt-8 text-xs max-w-2xl font-body">
-                    Match scores are estimates based on your notes. A doctor or research
-                    coordinator should confirm eligibility before enrolling.
+                    Match scores are algorithmic estimates based on submitted clinical information.
+                    Eligibility must be confirmed by the treating physician or study coordinator.
                   </p>
                 </section>
               )}
             </div>
           ) : (
-            <div className="space-y-6">
-              <div className="info-card bg-surface border border-border-subtle p-4 rounded-xl">
-                <h3 className="font-display text-lg font-semibold text-foreground">Your Clinical Trial Journey</h3>
+            <div className="space-y-8">
+              <div>
+                <h3 className="font-display text-lg text-foreground">Trial shortlist</h3>
                 <p className="section-hint text-xs mt-1 font-body">
-                  Track the recruitment status of your saved trials. States are synced locally to your browser.
+                  Track recruitment status for each study. Data is stored locally in this browser.
                 </p>
               </div>
 
-              <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
+              <div className="flex gap-10 overflow-x-auto pb-4">
                 {columns.map((col) => {
                   const items = savedTrials.filter((t) => t.boardStatus === col);
                   return (
-                    <div key={col} className="bg-muted/30 border border-border-subtle/50 rounded-xl p-3 min-w-[240px] flex-1 max-w-[320px]">
-                      <div className="flex justify-between items-center border-b border-border-subtle pb-2 mb-3">
-                        <span className="font-display text-sm font-semibold text-foreground flex items-center gap-1.5">
-                          {colLabels[col]}
-                          <span className="bg-muted text-primary text-[10px] font-bold px-2 py-0.5 rounded-full border border-border-subtle">
-                            {items.length}
-                          </span>
-                        </span>
-                      </div>
+                    <div key={col} className="board-column">
+                      <h4 className="board-column-title">
+                        {colLabels[col]}{" "}
+                        <span className="text-faint font-body font-normal">({items.length})</span>
+                      </h4>
 
-                      <ul className="space-y-3 min-h-[300px]">
+                      <ul className="space-y-0 min-h-[200px] divide-y divide-border-subtle">
                         {items.map((item) => (
-                          <li key={item.trial.trialId} className="bg-surface border border-border-subtle p-3 rounded-lg shadow-sm space-y-2 font-body">
+                          <li key={item.trial.trialId} className="py-4 space-y-2 font-body first:pt-0">
                             <span className="registry-chip">{item.trial.registry}</span>
-                            <h4 className="font-display text-xs font-semibold text-foreground line-clamp-2 leading-tight">
+                            <h4 className="font-display text-xs text-foreground line-clamp-3 leading-snug">
                               {item.trial.title}
                             </h4>
-                            <p className="text-[10px] text-faint font-medium">ID: {item.trial.trialId}</p>
+                            <p className="text-[10px] text-faint">{item.trial.trialId}</p>
 
-                            <div className="space-y-1.5 pt-1.5 border-t border-border-subtle/50 mt-1">
-                              <select
-                                value={item.boardStatus}
-                                onChange={(e) => moveTrialStatus(item.trial.trialId, e.target.value)}
-                                className="bg-background border border-border text-[10px] rounded p-1 w-full font-medium focus:outline-none"
-                              >
-                                <option value="saved">Saved</option>
-                                <option value="contacted">Contacted</option>
-                                <option value="screening">Screening</option>
-                                <option value="enrolled">Enrolled</option>
-                                <option value="disqualified">Disqualified</option>
-                              </select>
+                            <select
+                              value={item.boardStatus}
+                              onChange={(e) => moveTrialStatus(item.trial.trialId, e.target.value)}
+                              className="field-select text-[10px] mt-2"
+                            >
+                              <option value="saved">Saved</option>
+                              <option value="contacted">Contacted</option>
+                              <option value="screening">Screening</option>
+                              <option value="enrolled">Enrolled</option>
+                              <option value="disqualified">Disqualified</option>
+                            </select>
 
-                              <button
-                                type="button"
-                                onClick={() => removeSavedTrial(item.trial.trialId)}
-                                className="text-[10px] text-destructive hover:underline font-semibold block text-center w-full mt-1"
-                              >
-                                Remove from Board
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeSavedTrial(item.trial.trialId)}
+                              className="text-[10px] text-destructive hover:underline block mt-1"
+                            >
+                              Remove
+                            </button>
                           </li>
                         ))}
                         {items.length === 0 && (
-                          <li className="text-center py-12 border border-dashed border-border rounded-lg text-faint text-xs italic font-body">
-                            No trials in this column
+                          <li className="py-8 text-faint text-xs italic font-body">
+                            No studies in this stage
                           </li>
                         )}
                       </ul>
@@ -1421,32 +1689,32 @@ export default function ResultsDashboard({
 
       {showGuideModal && (
         <div className="fixed inset-0 bg-foreground/30 backdrop-blur-sm flex justify-center items-center p-4 z-50 overflow-y-auto">
-          <div id="print-area" className="bg-surface border border-border-subtle p-6 rounded-2xl max-w-4xl w-full shadow-2xl relative space-y-6 max-h-[90vh] overflow-y-auto">
+          <div id="print-area" className="modal-panel-wide relative">
             
-            <div className="flex justify-between items-start border-b border-border-subtle pb-4 no-print">
+            <div className="flex justify-between items-start pb-4 divider no-print">
               <div>
-                <h3 className="font-display text-xl font-bold text-foreground">Doctor Discussion Guide</h3>
-                <p className="section-hint text-xs mt-1 font-body">Personalized guide ready to print for your next clinical oncology appointment.</p>
+                <h3 className="font-display text-xl text-foreground">Oncology consultation guide</h3>
+                <p className="section-hint text-xs mt-1 font-body">Prepared for review at the next clinical appointment.</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-4">
                 <button
                   type="button"
                   onClick={handleExportCSV}
-                  className="px-3 py-1.5 border border-border text-xs rounded-md hover:bg-muted font-semibold text-primary transition-colors font-body"
+                  className="btn-ghost text-xs"
                 >
                   Download CSV
                 </button>
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-primary hover:bg-secondary text-on-primary text-xs rounded-md font-semibold transition-colors font-body"
+                  className="btn-primary text-xs min-h-9 px-4"
                 >
-                  Print Guide
+                  Print
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowGuideModal(false)}
-                  className="px-2.5 py-1.5 border border-border text-xs rounded-md hover:bg-muted font-semibold text-faint transition-colors font-body"
+                  className="btn-ghost text-xs"
                 >
                   Close
                 </button>
@@ -1491,21 +1759,23 @@ export default function ResultsDashboard({
             </section>
 
             <section className="space-y-4">
-              <h4 className="font-display text-base font-bold text-foreground border-b border-border-subtle pb-1.5">Saved Trials to Discuss</h4>
+              <h4 className="font-display text-base font-bold text-foreground border-b border-border-subtle pb-1.5">Shortlisted studies for discussion</h4>
               
               <ul className="space-y-6">
                 {savedTrials.map((item) => {
                   const questions = generatePersonalizedQuestions(profile, item.trial);
                   return (
-                    <li key={item.trial.trialId} className="border border-border-subtle rounded-xl p-4 space-y-3 bg-muted/10 page-break-avoid font-body">
+                    <li key={item.trial.trialId} className="py-5 border-b border-border-subtle space-y-3 page-break-avoid font-body last:border-0">
                       <div className="flex justify-between items-baseline flex-wrap gap-2">
-                        <span className="font-display text-sm font-bold text-foreground">{item.trial.title}</span>
-                        <span className="text-xs text-primary font-bold">{item.trial.registry} • {item.trial.trialId} ({item.trial.phase})</span>
+                        <span className="font-display text-sm text-foreground">{item.trial.title}</span>
+                        <span className="text-xs text-faint">{item.trial.registry}, {item.trial.trialId} ({item.trial.phase})</span>
                       </div>
-                      <p className="text-xs text-faint italic mt-1 font-body">{item.trial.summary}</p>
+                      <p className="text-xs text-faint italic mt-1 font-body line-clamp-3">
+                        {truncateTrialSummary(item.trial.summary)}
+                      </p>
                       
                       <div className="pt-2">
-                        <span className="text-xs font-bold text-primary block mb-1">Key Questions for the Doctor:</span>
+                        <span className="text-xs font-medium text-faint block mb-1">Consultation questions</span>
                         <ul className="list-disc pl-5 text-xs text-body-muted space-y-1.5">
                           {questions.map((q, idx) => (
                             <li key={idx}>{q}</li>

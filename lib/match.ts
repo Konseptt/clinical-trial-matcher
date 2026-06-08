@@ -1,9 +1,13 @@
-import { extractPatientProfileAI } from "@/lib/extract";
+import { extractPatientProfile } from "@/lib/extract";
+import { extractPatientProfilePatientMode } from "@/lib/extract-ai";
 import { queryAllRegistries } from "@/lib/registries";
 import { scoreAndRankTrials } from "@/lib/scoring";
-import type { MatchResponse, PatientProfile } from "@/lib/types";
+import type { AppMode, MatchResponse, PatientProfile } from "@/lib/types";
 
-export async function runMatchPipelineByProfile(profile: PatientProfile): Promise<MatchResponse> {
+export async function runMatchPipelineByProfile(
+  profile: PatientProfile,
+  mode: AppMode = "doctor"
+): Promise<MatchResponse> {
   const { trials, registryResults, queryPlans } =
     await queryAllRegistries(profile);
   const ranked = await scoreAndRankTrials(trials, profile);
@@ -18,10 +22,18 @@ export async function runMatchPipelineByProfile(profile: PatientProfile): Promis
       trialCount: result.trials.length,
       error: result.error,
     })),
+    mode,
   };
 }
 
-export async function runMatchPipeline(notes: string): Promise<MatchResponse> {
-  const profile = await extractPatientProfileAI(notes);
-  return runMatchPipelineByProfile(profile);
+export async function runMatchPipeline(
+  notes: string,
+  mode: AppMode = "doctor"
+): Promise<MatchResponse> {
+  const profile =
+    mode === "patient"
+      ? await extractPatientProfilePatientMode(notes)
+      : extractPatientProfile(notes);
+
+  return runMatchPipelineByProfile(profile, mode);
 }

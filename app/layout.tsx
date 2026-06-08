@@ -24,24 +24,31 @@ const firaCode = Fira_Code({
 });
 
 export const metadata: Metadata = {
-  title: "Trial Finder",
+  title: {
+    default: "Clinical Trial Matcher",
+    template: "%s, Clinical Trial Matcher",
+  },
   description:
-    "Paste clinical notes to find recruiting trials that may fit a patient's diagnosis, location, and treatment history.",
+    "Search international clinical trial registries using patient clinical information to identify potentially eligible studies.",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
 };
 
 function Masthead() {
   return (
-    <header className="mb-10">
-      <p className="section-label text-primary mb-2">
-        For patients, caregivers, and care teams
-      </p>
-      <h1 className="font-display text-[2.25rem] sm:text-[2.75rem] leading-tight text-foreground text-pretty">
-        Find clinical trials that may be a fit
+    <header className="mb-10 max-w-3xl relative">
+      <p className="section-label mb-4">Clinical trial registry search</p>
+      <h1 className="font-display text-[2.75rem] sm:text-[3.25rem] leading-[1.05] text-foreground text-pretty">
+        Identify trials matched to{" "}
+        <em className="not-italic text-accent">clinical profile</em>
       </h1>
-      <p className="section-hint mt-3 max-w-3xl">
-        Paste a short clinical summary. We read the key details, search major
-        trial registries, and show the best matches ranked for you to review
-        with a doctor.
+      <div className="masthead-flourish" aria-hidden="true">
+        <span />
+      </div>
+      <p className="section-hint text-[1.05rem] max-w-xl">
+        Enter diagnosis, treatment history, and location. The system queries
+        public registries and ranks open studies by estimated eligibility fit.
       </p>
     </header>
   );
@@ -70,10 +77,10 @@ export default function RootLayout({
         <footer className="mt-auto">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="border-t border-border-subtle" />
-            <p className="py-7 section-hint text-xs">
-              This tool is for research only. It does not store your notes, does
-              not give medical advice, and cannot enroll anyone in a trial. Always
-              talk with a healthcare provider before pursuing a study.
+            <p className="py-8 section-hint text-xs max-w-2xl">
+              For informational purposes only. This tool does not provide medical advice,
+              diagnosis, or treatment recommendations, and cannot enroll patients in studies.
+              Confirm eligibility with your oncology care team before pursuing any trial.
             </p>
           </div>
         </footer>

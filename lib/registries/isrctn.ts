@@ -1,3 +1,4 @@
+import { capTrialSummary, normalizeTrialSummary } from "@/lib/format";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
 
 const LEGACY_XML =
@@ -35,9 +36,10 @@ function parseLegacyXml(xml: string): RegistryTrial[] {
 
     const plainEnglish = block.match(/<plainEnglishSummary>([\s\S]*?)<\/plainEnglishSummary>/i)?.[1] ?? "";
     const hypothesis = block.match(/<studyHypothesis>([\s\S]*?)<\/studyHypothesis>/i)?.[1] ?? "";
-    const summary = (plainEnglish && !plainEnglish.includes("Not provided"))
+    const rawSummary = (plainEnglish && !plainEnglish.includes("Not provided"))
       ? plainEnglish.trim()
       : hypothesis.trim() || "ISRCTN registered trial.";
+    const summary = capTrialSummary(normalizeTrialSummary(rawSummary));
 
     const countriesMatches = [...block.matchAll(/<country>([^<]+)/g)];
     const locations = countriesMatches.map(m => ({

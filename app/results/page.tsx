@@ -6,11 +6,13 @@ import { useRouter } from "next/navigation";
 import ResultsDashboard from "@/components/ResultsDashboard";
 import LoadingProgress from "@/components/LoadingProgress";
 import { getResultsAction, getResultsByProfileAction } from "@/app/actions/match";
-import type { MatchResponse, PatientProfile } from "@/lib/types";
+import { MODE_STORAGE_KEY, normalizeAppMode } from "@/lib/mode";
+import type { AppMode, MatchResponse, PatientProfile } from "@/lib/types";
 
 export default function ResultsPage() {
   const [data, setData] = useState<MatchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<AppMode>("doctor");
   const [isPending, startTransition] = useTransition();
   const [isUpdating, startUpdateTransition] = useTransition();
   const router = useRouter();
@@ -24,17 +26,19 @@ export default function ResultsPage() {
       return;
     }
 
+    const storedMode = normalizeAppMode(sessionStorage.getItem(MODE_STORAGE_KEY));
+    setMode(storedMode);
+
     startTransition(async () => {
       try {
         if (savedProfileJson) {
           const profile = JSON.parse(savedProfileJson) as PatientProfile;
           const result = await getResultsByProfileAction(profile);
-          setData(result);
+          setData({ ...result, mode: "doctor" });
         } else if (notes) {
-          const result = await getResultsAction(notes);
+          const result = await getResultsAction(notes, storedMode);
           setData(result);
 
-          // Save search history
           try {
             const history = localStorage.getItem("search_history");
             let items = [];
@@ -54,7 +58,11 @@ export default function ResultsPage() {
         }
       } catch (err) {
         console.error(err);
-        setError("An error occurred while matching trials. Please check your notes or profile and try again.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "The trial search could not be completed. Please verify your input and try again."
+        );
       }
     });
   }, [router]);
@@ -66,8 +74,7 @@ export default function ResultsPage() {
         setData(result);
       } catch (err) {
         console.error(err);
-        // Show non-blocking error or set error state
-        alert("Failed to update matches. Please verify your profile fields.");
+        alert("Unable to refresh results. Please verify the patient profile fields.");
       }
     });
   };
@@ -75,19 +82,19 @@ export default function ResultsPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="info-card border-destructive/30 bg-destructive/5 text-destructive p-6 rounded-lg">
-          <p className="font-semibold text-lg">Something went wrong</p>
-          <p className="mt-2 text-sm opacity-90">{error}</p>
+        <div className="max-w-lg">
+          <p className="font-display text-2xl text-foreground">Search could not be completed</p>
+          <p className="mt-3 text-sm text-destructive font-body">{error}</p>
         </div>
         <Link href="/" className="btn-primary inline-block">
-          Go back
+          Return to search
         </Link>
       </div>
     );
   }
 
   if (isPending || !data) {
-    return <LoadingProgress />;
+    return <LoadingProgress mode={mode} />;
   }
 
   return (
@@ -99,7 +106,7 @@ export default function ResultsPage() {
       />
       <div className="mt-10 pt-6 border-t border-border-subtle">
         <Link href="/" className="btn-ghost">
-          Start a new search
+          Initiate new search
         </Link>
       </div>
     </div>

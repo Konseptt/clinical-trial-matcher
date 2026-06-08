@@ -1,3 +1,4 @@
+import { capTrialSummary } from "@/lib/format";
 import type { ClinicalTrialsGovResponse, ClinicalTrialsGovStudy } from "@/lib/types";
 import { resolveRegistryCountry } from "@/lib/location";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
@@ -29,9 +30,10 @@ function mapStudy(study: ClinicalTrialsGovStudy): RegistryTrial {
     trialId: id.nctId,
     title: id.briefTitle || id.officialTitle || "Untitled Study",
     phase: normalizePhase(study.protocolSection.designModule?.phases),
-    summary:
-      study.protocolSection.descriptionModule?.briefSummary?.slice(0, 400) ??
-      "No summary available.",
+    summary: capTrialSummary(
+      study.protocolSection.descriptionModule?.briefSummary ??
+        "No summary available."
+    ),
     status: study.protocolSection.statusModule.overallStatus,
     locations: locations.slice(0, 4).map((loc) => ({
       facility: loc.facility ?? "Facility not listed",

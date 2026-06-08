@@ -3,28 +3,26 @@
 @tailwind utilities;
 
 :root {
-  --color-primary: #2f5d50;
-  --color-on-primary: #faf9f6;
+  --color-primary: #2a4a40;
+  --color-on-primary: #faf8f4;
   --color-secondary: #4a7c6f;
-  --color-accent: #b55233;
-  --color-accent-dark: #8f3e25;
-  --color-background: #f0ede6;
-  --color-foreground: #1a2822;
-  --color-muted: #e4e8e4;
-  --color-surface: #faf9f6;
-  --color-border: #c5cec4;
-  --color-destructive: #a63d40;
-  --color-ring: #2f5d50;
-  --color-faint: #5c6f66;
-  --color-match-high: #2f5d50;
-  --color-match-mid: #c4841d;
-  --color-match-low: #a63d40;
-  --color-border-subtle: #d8dfd8;
-  --color-muted-panel: #e4e8e4;
-  --color-faint-muted: #8a9a92;
-  --color-body-muted: #3d4f47;
-  --shadow-card: 0 2px 8px rgba(26, 40, 34, 0.06);
-  --shadow-card-hover: 0 4px 16px rgba(26, 40, 34, 0.1);
+  --color-accent: #a8482f;
+  --color-accent-dark: #863a25;
+  --color-background: #f7f4ee;
+  --color-foreground: #1c2622;
+  --color-muted: #ebe8e1;
+  --color-surface: #faf8f4;
+  --color-border: #d4cfc4;
+  --color-destructive: #9e3a3d;
+  --color-ring: #2a4a40;
+  --color-faint: #5f6b64;
+  --color-match-high: #2a4a40;
+  --color-match-mid: #9a6b1a;
+  --color-match-low: #9e3a3d;
+  --color-border-subtle: #e2ddd3;
+  --color-muted-panel: #ebe8e1;
+  --color-faint-muted: #8a948d;
+  --color-body-muted: #3a4540;
 }
 
 @layer base {
@@ -40,19 +38,17 @@
   }
 
   body {
-    @apply bg-background text-foreground font-body text-base leading-relaxed;
-    background-image: linear-gradient(
-        160deg,
-        rgba(47, 93, 80, 0.05) 0%,
-        transparent 50%
-      ),
-      linear-gradient(20deg, rgba(181, 82, 51, 0.03) 0%, transparent 45%);
+    @apply text-foreground font-body text-[1.05rem] leading-relaxed;
     touch-action: manipulation;
-    -webkit-tap-highlight-color: rgba(47, 93, 80, 0.12);
+    -webkit-tap-highlight-color: rgba(42, 74, 64, 0.1);
+    background-color: var(--color-background);
+    background-image:
+      radial-gradient(ellipse 120% 80% at 100% 0%, rgba(168, 72, 47, 0.04), transparent 55%),
+      radial-gradient(ellipse 90% 60% at 0% 100%, rgba(42, 74, 64, 0.05), transparent 50%);
   }
 
   ::selection {
-    background-color: rgba(47, 93, 80, 0.2);
+    background-color: rgba(42, 74, 64, 0.18);
     color: var(--color-foreground);
   }
 }
@@ -61,179 +57,297 @@
   .skip-link {
     @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50
       focus:px-4 focus:py-3 focus:bg-surface focus:text-foreground
-      focus:border-2 focus:border-ring focus:font-body focus:text-sm;
+      focus:font-body focus:text-sm;
   }
 
   .section-label {
-    @apply font-body text-sm font-semibold text-body-muted;
+    @apply font-body text-xs font-semibold uppercase tracking-[0.14em] text-accent;
   }
 
   .section-hint {
-    @apply font-body text-sm text-faint leading-relaxed;
+    @apply font-body text-[0.95rem] text-faint leading-relaxed;
   }
 
   .field-label {
     @apply font-body text-sm font-medium text-faint;
   }
 
+  .divider {
+    @apply border-t border-border-subtle;
+  }
+
+  .masthead-flourish {
+    @apply flex items-center gap-4 my-6;
+  }
+
+  .masthead-flourish::before,
+  .masthead-flourish::after {
+    content: "";
+    @apply flex-1 h-px bg-border;
+  }
+
+  .masthead-flourish span {
+    @apply w-1.5 h-1.5 rotate-45 bg-accent shrink-0;
+  }
+
+  .page-spine {
+    @apply relative;
+  }
+
+  @media (min-width: 1024px) {
+    .page-spine::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 41.666%;
+      width: 1px;
+      background: linear-gradient(
+        to bottom,
+        transparent,
+        var(--color-border) 8%,
+        var(--color-border) 92%,
+        transparent
+      );
+      pointer-events: none;
+    }
+  }
+
+  .margin-rail {
+    @apply relative pl-6;
+  }
+
+  .margin-rail::before {
+    content: "";
+    @apply absolute left-0 top-1 bottom-1 w-0.5;
+    background: linear-gradient(
+      to bottom,
+      var(--color-accent),
+      color-mix(in srgb, var(--color-primary) 60%, transparent)
+    );
+  }
+
+  .aside-rail {
+    @apply relative pl-5 lg:border-l lg:border-border-subtle lg:pl-8;
+  }
+
+  .compose-pane {
+    @apply relative pl-5;
+  }
+
+  .compose-pane::before {
+    content: "";
+    @apply absolute left-0 top-0 bottom-0 w-1 bg-accent;
+    opacity: 0.55;
+  }
+
+  .timeline-rail {
+    @apply relative pl-8 space-y-0;
+  }
+
+  .timeline-rail::before {
+    content: "";
+    @apply absolute left-[0.55rem] top-3 bottom-3 w-px bg-border;
+  }
+
+  .timeline-step {
+    @apply relative flex items-start gap-4 py-4;
+  }
+
+  .timeline-step:last-child {
+    @apply pb-0;
+  }
+
+  .step-number {
+    @apply absolute -left-8 font-display text-2xl text-accent leading-none w-6 text-right;
+  }
+
+  .mode-tab {
+    @apply font-body text-sm font-medium text-faint pb-3 border-b-2 border-transparent
+      transition-colors cursor-pointer hover:text-foreground;
+  }
+
+  .mode-tab-active {
+    @apply font-body text-sm font-medium text-foreground pb-3 border-b-2 border-accent
+      transition-colors cursor-pointer;
+  }
+
   .btn-primary {
-    @apply inline-flex items-center justify-center min-h-11 min-w-11
-      font-body text-base font-semibold text-on-primary cursor-pointer
-      bg-accent border-2 border-accent px-8 py-3 rounded-lg
-      hover:bg-accent-dark hover:border-accent-dark
+    @apply inline-flex items-center justify-center min-h-11
+      font-body text-base font-medium text-on-primary cursor-pointer
+      bg-accent px-7 py-2.5
+      hover:bg-accent-dark
       disabled:opacity-40 disabled:cursor-not-allowed
-      disabled:hover:bg-accent disabled:hover:border-accent
-      transition-[background-color,border-color,transform] duration-200
-      focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2
-      active:scale-[0.98];
+      transition-colors duration-150
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center min-h-11 min-w-11
+    @apply inline-flex items-center justify-center min-h-11
       font-body text-sm font-medium text-primary cursor-pointer
-      underline underline-offset-2
-      transition-colors duration-200
-      focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2;
-    text-decoration-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
-  }
-
-  .btn-ghost:hover {
-    text-decoration-color: var(--color-primary);
+      underline underline-offset-4 decoration-border
+      hover:decoration-primary
+      transition-colors duration-150
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center min-h-11
+    @apply inline-flex items-center justify-center min-h-10
       font-body text-sm font-medium text-primary cursor-pointer
-      bg-surface border border-border rounded-lg px-5 py-2.5
-      hover:bg-muted
-      transition-colors duration-200
-      focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2;
-  }
-
-  .btn-secondary:hover {
-    border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+      underline underline-offset-4 decoration-border
+      hover:decoration-primary
+      transition-colors duration-150
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
 
   .notes-field {
-    @apply w-full bg-background border border-border rounded-lg
-      px-5 py-5 font-body text-base text-foreground leading-relaxed
-      resize-y min-h-[260px]
-      focus:outline-none focus:ring-[3px] focus:ring-ring focus:ring-offset-0
+    @apply w-full bg-transparent border-0 px-0 py-3 font-body text-base text-foreground leading-relaxed
+      resize-y min-h-[220px]
+      focus:outline-none focus:ring-0
       disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .notes-field::placeholder {
-    color: color-mix(in srgb, var(--color-faint) 55%, transparent);
+    color: color-mix(in srgb, var(--color-faint) 45%, transparent);
+    font-style: italic;
   }
 
   .notes-field[aria-invalid="true"] {
-    @apply border-destructive;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-destructive) 20%, transparent);
+    @apply text-destructive;
   }
 
-  .info-card {
-    @apply bg-surface border border-border-subtle rounded-xl px-5 py-6;
-    box-shadow: var(--shadow-card);
+  .compose-footer {
+    @apply flex justify-between items-baseline mt-2 text-xs text-faint font-body;
   }
 
-  .chart-panel {
-    @apply info-card;
+  .trial-entry {
+    @apply grid gap-x-5 gap-y-4 py-10;
+    grid-template-columns: 3rem 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  @media (min-width: 640px) {
+    .trial-entry {
+      grid-template-columns: 3.5rem 1fr auto;
+      grid-template-rows: auto;
+    }
+  }
+
+  .trial-actions {
+    @apply col-start-2 flex flex-row items-center justify-between gap-4 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end sm:justify-start sm:gap-3 sm:self-start;
+  }
+
+  .trial-index {
+    @apply font-display text-3xl text-border leading-none pt-1 tabular-nums;
+  }
+
+  .meta-strip {
+    @apply text-[0.65rem] font-body font-semibold uppercase tracking-[0.12em] text-faint;
+  }
+
+  .trial-title {
+    @apply font-display text-xl sm:text-2xl text-foreground leading-snug text-pretty;
   }
 
   .trial-card {
-    @apply bg-surface border border-border-subtle rounded-xl p-5 sm:p-6;
-    box-shadow: var(--shadow-card);
-    transition: box-shadow 200ms ease;
+    @apply border-b border-border-subtle last:border-b-0;
+    transition: opacity 200ms ease;
   }
 
-  .trial-card:hover {
-    box-shadow: var(--shadow-card-hover);
+  .score-ring {
+    @apply relative inline-flex flex-col items-center justify-center cursor-pointer
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
 
-  .step-number {
-    @apply flex items-center justify-center w-7 h-7 rounded-full
-      text-primary font-body text-xs font-semibold shrink-0 mt-0.5;
-    background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  .score-ring svg {
+    @apply block;
   }
 
-  .step-pill {
-    @apply inline-flex items-center gap-2 font-body text-sm text-body-muted
-      bg-muted/60 rounded-full px-3.5 py-1.5;
+  .score-ring-value {
+    @apply absolute font-display text-lg leading-none tabular-nums;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -58%);
   }
 
-  .status-pill {
-    @apply inline-block font-body text-xs font-medium rounded-full px-2.5 py-0.5;
+  .score-ring-label {
+    @apply font-body text-[0.65rem] text-faint mt-1 text-center max-w-[5rem] leading-tight;
   }
 
-  .status-pill-open {
-    @apply status-pill text-primary;
-    background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  .score-ring-high {
+    color: var(--color-match-high);
   }
 
+  .score-ring-mid {
+    color: var(--color-match-mid);
+  }
+
+  .score-ring-low {
+    color: var(--color-match-low);
+  }
+
+  .registry-meter {
+    @apply space-y-3 mt-5;
+  }
+
+  .registry-meter-row {
+    @apply grid items-center gap-3;
+    grid-template-columns: 4.5rem 1fr 2rem;
+  }
+
+  .registry-meter-label {
+    @apply font-body text-[0.65rem] font-semibold uppercase tracking-wider text-faint truncate;
+  }
+
+  .registry-meter-track {
+    @apply h-0.5 bg-border-subtle relative overflow-hidden;
+  }
+
+  .registry-meter-fill {
+    @apply absolute left-0 top-0 h-full transition-all duration-500 ease-out;
+    background: var(--color-primary);
+  }
+
+  .registry-meter-fill-loading {
+    @apply animate-pulse;
+    background: var(--color-accent);
+    width: 30% !important;
+  }
+
+  .registry-meter-fill-empty {
+    background: var(--color-border);
+    width: 8% !important;
+  }
+
+  .registry-meter-fill-warn {
+    background: var(--color-match-mid);
+    width: 20% !important;
+  }
+
+  .registry-meter-count {
+    @apply font-mono text-xs text-right text-foreground tabular-nums;
+  }
+
+  .profile-spec {
+    @apply grid gap-x-4 gap-y-3 py-2;
+    grid-template-columns: 5.5rem 1fr;
+  }
+
+  .profile-spec dt {
+    @apply font-body text-xs text-faint text-right uppercase tracking-wide pt-0.5;
+  }
+
+  .profile-spec dd {
+    @apply font-body text-sm text-foreground break-words;
+  }
+
+  .status-pill-open,
   .status-pill-closed {
-    @apply status-pill bg-muted text-faint;
+    @apply inline font-body text-xs text-faint;
   }
 
   .registry-chip {
-    @apply inline-block font-body text-xs font-medium text-primary
-      rounded-md px-2 py-0.5;
-    background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 15%, transparent);
-  }
-
-  .match-badge {
-    @apply inline-flex flex-col items-center rounded-xl px-4 py-2.5 text-center min-w-[5.5rem];
-  }
-
-  .match-badge-high {
-    @apply match-badge border-2;
-    background-color: color-mix(in srgb, var(--color-match-high) 8%, transparent);
-    border-color: color-mix(in srgb, var(--color-match-high) 25%, transparent);
-  }
-
-  .match-badge-mid {
-    @apply match-badge border-2;
-    background-color: color-mix(in srgb, var(--color-match-mid) 8%, transparent);
-    border-color: color-mix(in srgb, var(--color-match-mid) 25%, transparent);
-  }
-
-  .match-badge-low {
-    @apply match-badge border-2;
-    background-color: color-mix(in srgb, var(--color-match-low) 8%, transparent);
-    border-color: color-mix(in srgb, var(--color-match-low) 25%, transparent);
-  }
-
-  .match-score-num {
-    @apply font-display text-2xl leading-none tabular-nums;
-  }
-
-  .match-score-high .match-score-num {
-    @apply text-match-high;
-  }
-
-  .match-score-mid .match-score-num {
-    @apply text-match-mid;
-  }
-
-  .match-score-low .match-score-num {
-    @apply text-match-low;
-  }
-
-  .match-score-label {
-    @apply font-body text-xs font-medium text-faint mt-1;
-  }
-
-  .profile-row {
-    @apply flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4 py-3.5
-      border-b border-border-subtle last:border-0;
-  }
-
-  .profile-label {
-    @apply font-body text-sm font-medium text-faint sm:w-36 shrink-0;
-  }
-
-  .profile-value {
-    @apply font-body text-base text-foreground break-words;
+    @apply font-body text-xs text-faint uppercase tracking-wider;
   }
 
   .trial-enter {
@@ -241,16 +355,62 @@
   }
 
   .loading-step-active {
-    @apply flex items-start gap-3 font-body text-base text-foreground;
+    @apply timeline-step font-body text-base text-foreground;
   }
 
   .loading-step-wait {
-    @apply flex items-start gap-3 font-body text-base text-faint-muted;
+    @apply timeline-step font-body text-base text-faint-muted;
   }
 
   .loading-dot {
-    @apply w-2 h-2 rounded-full bg-primary mt-2 shrink-0;
+    @apply absolute -left-8 w-2 h-2 rounded-full bg-accent mt-1.5;
     animation: pulse-dot 1.2s ease-in-out infinite;
+  }
+
+  .callout {
+    @apply pl-4 border-l-2 text-sm text-foreground leading-relaxed font-body;
+    border-left-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  }
+
+  .guide-block {
+    @apply space-y-1 pt-4;
+  }
+
+  .guide-heading {
+    @apply font-body text-xs font-medium uppercase tracking-wider text-faint;
+  }
+
+  .field-input {
+    @apply w-full bg-transparent border-0 border-b border-border
+      px-0 py-2 font-body text-sm text-foreground
+      focus:outline-none focus:border-primary;
+  }
+
+  .field-select {
+    @apply w-full bg-transparent border-0 border-b border-border
+      px-0 py-2 font-body text-sm text-foreground
+      focus:outline-none focus:border-primary cursor-pointer;
+  }
+
+  .modal-panel {
+    @apply bg-surface p-6 max-w-sm w-full space-y-4;
+  }
+
+  .modal-panel-wide {
+    @apply bg-surface p-6 max-w-4xl w-full space-y-6 max-h-[90vh] overflow-y-auto;
+  }
+
+  .check-row {
+    @apply flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 py-2
+      border-b border-border-subtle last:border-0 text-xs font-body;
+  }
+
+  .board-column {
+    @apply min-w-[200px] flex-1 max-w-[260px];
+  }
+
+  .board-column-title {
+    @apply font-display text-sm text-foreground mb-4 pb-2 border-b-2 border-accent;
   }
 }
 
@@ -268,12 +428,10 @@
 @keyframes pulse-dot {
   0%,
   100% {
-    opacity: 0.4;
-    transform: scale(0.9);
+    opacity: 0.35;
   }
   50% {
     opacity: 1;
-    transform: scale(1.1);
   }
 }
 
