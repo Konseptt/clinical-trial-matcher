@@ -634,7 +634,7 @@ function TrialCard({
 
             {simpleSummary && (
               <div className="mt-3 p-3.5 bg-primary/5 border border-primary/10 rounded-lg text-xs leading-relaxed text-body-muted">
-                <span className="font-semibold text-primary block mb-1">✨ Patient-Friendly AI Explanation:</span>
+                <span className="font-semibold text-primary block mb-1">✨ Simplified Summary:</span>
                 {simpleSummary}
               </div>
             )}
@@ -757,7 +757,7 @@ function TrialCard({
               disabled={loadingSimple}
               className="btn-secondary text-xs w-full py-1.5 flex items-center justify-center gap-1 disabled:opacity-50 font-body"
             >
-              {loadingSimple ? "Simplifying..." : simpleSummary ? "Hide AI Summary" : "✨ Simplify with AI"}
+              {loadingSimple ? "Simplifying..." : simpleSummary ? "Hide Summary" : "✨ Simplify Description"}
             </button>
 
             <button
