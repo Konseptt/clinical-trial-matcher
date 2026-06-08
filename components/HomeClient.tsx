@@ -9,8 +9,8 @@ export default function HomeClient() {
   const [mode, setMode] = useState<AppMode>("patient");
 
   return (
-    <div className="page-spine grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 xl:gap-20 items-start">
-      <div className="lg:col-span-5 xl:col-span-4 margin-rail space-y-8">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start w-full">
+      <div className="lg:col-span-5 margin-rail space-y-8">
         <nav aria-label="Search mode" className="flex gap-8 border-b border-border-subtle">
           <button
             type="button"
@@ -28,7 +28,7 @@ export default function HomeClient() {
           </button>
         </nav>
 
-        <p className="callout text-[0.9rem]">
+        <p className="callout">
           {mode === "patient"
             ? "Provide a narrative clinical summary. The system extracts key eligibility variables and searches major international registries."
             : "Enter structured information from the medical record. The system parses eligibility criteria and queries major trial registries."}
@@ -37,7 +37,7 @@ export default function HomeClient() {
         <AnalysisIntro mode={mode} />
       </div>
 
-      <div className="lg:col-span-7 xl:col-span-8">
+      <div className="lg:col-span-7">
         <MatchForm mode={mode} />
       </div>
     </div>

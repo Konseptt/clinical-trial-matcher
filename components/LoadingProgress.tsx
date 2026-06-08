@@ -22,10 +22,10 @@ export default function LoadingProgress({ mode = "doctor" }: { mode?: AppMode })
       aria-busy="true"
       aria-label="Searching for matching trials"
     >
-      <h2 className="font-display text-2xl text-foreground mb-2">
+      <h2 className="section-title mb-2">
         Searching registries
       </h2>
-      <p className="section-hint mb-8">
+      <p className="section-hint mb-10">
         This typically completes within a few seconds across multiple data sources.
       </p>
 

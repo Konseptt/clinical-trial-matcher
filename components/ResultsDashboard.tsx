@@ -64,31 +64,35 @@ function ScoreRing({
       type="button"
       onClick={onClick}
       className={`score-ring ${scoreRingClass(score)}`}
-      aria-label={`Match score: ${score}%. Click to view breakdown.`}
+      aria-label={`Match score: ${score}%. ${label}. Click to view breakdown.`}
       aria-expanded={expanded}
     >
-      <svg width="60" height="60" viewBox="0 0 44 44" className="-rotate-90" aria-hidden="true">
-        <circle
-          cx="22"
-          cy="22"
-          r={SCORE_RING_R}
-          fill="none"
-          stroke="currentColor"
-          strokeOpacity={0.14}
-          strokeWidth="2.5"
-        />
-        <circle
-          cx="22"
-          cy="22"
-          r={SCORE_RING_R}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeDasharray={`${dash} ${SCORE_RING_C}`}
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className="score-ring-value">{score}</span>
+      <div className="score-ring-chart">
+        <svg viewBox="0 0 44 44" className="-rotate-90" aria-hidden="true">
+          <circle
+            cx="22"
+            cy="22"
+            r={SCORE_RING_R}
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity={0.18}
+            strokeWidth="2"
+          />
+          <circle
+            cx="22"
+            cy="22"
+            r={SCORE_RING_R}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeDasharray={`${dash} ${SCORE_RING_C}`}
+            strokeLinecap="butt"
+          />
+        </svg>
+        <span className="score-ring-value" aria-hidden="true">
+          {score}
+        </span>
+      </div>
       <span className="score-ring-label">{label}</span>
     </button>
   );
@@ -262,7 +266,7 @@ function ProfileSummary({
     return (
       <form onSubmit={handleSave} className="space-y-4 text-left">
         <div className="flex items-center justify-between pb-3 mb-2">
-          <h2 className="font-display text-lg font-semibold text-foreground">
+          <h2 className="font-display text-lg text-foreground">
             Edit patient profile
           </h2>
           <div className="flex gap-4">
@@ -338,31 +342,31 @@ function ProfileSummary({
             </span>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-[10px] font-semibold text-faint mb-0.5">City</label>
+                <label className="block text-xs font-semibold text-faint mb-0.5">City</label>
                 <input
                   type="text"
                   value={editedCity}
                   onChange={(e) => setEditedCity(e.target.value)}
-                  className="field-input text-[11px]"
+                  className="field-input text-xs"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-faint mb-0.5">State/Prov</label>
+                <label className="block text-xs font-semibold text-faint mb-0.5">State/Prov</label>
                 <input
                   type="text"
                   value={editedState}
                   onChange={(e) => setEditedState(e.target.value)}
                   placeholder="MA"
-                  className="field-input text-[11px]"
+                  className="field-input text-xs"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-faint mb-0.5">Country</label>
+                <label className="block text-xs font-semibold text-faint mb-0.5">Country</label>
                 <input
                   type="text"
                   value={editedCountry}
                   onChange={(e) => setEditedCountry(e.target.value)}
-                  className="field-input text-[11px]"
+                  className="field-input text-xs"
                 />
               </div>
             </div>
@@ -407,7 +411,7 @@ function ProfileSummary({
             />
             {editedTimeline.length > 0 && (
               <div className="mt-3.5 space-y-3 pt-2 divider">
-                <span className="block text-[10px] font-bold text-faint font-body">
+                <span className="block text-xs font-bold text-faint font-body">
                   Therapy timeline
                 </span>
                 {editedTimeline.map((item, idx) => (
@@ -428,12 +432,12 @@ function ProfileSummary({
                           }}
                           className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
                         />
-                        <span className="text-[10px] text-faint font-body">Ongoing</span>
+                        <span className="text-xs text-faint font-body">Ongoing</span>
                       </label>
                     </div>
                     {!item.ongoing && (
                       <div className="flex gap-2 items-center">
-                        <span className="text-[10px] text-faint whitespace-nowrap font-body">End Date:</span>
+                        <span className="text-xs text-faint whitespace-nowrap font-body">End Date:</span>
                         <input
                           type="month"
                           value={item.endDate || ""}
@@ -443,7 +447,7 @@ function ProfileSummary({
                               prev.map((t, i) => (i === idx ? { ...t, endDate: val } : t))
                             );
                           }}
-                          className="field-input text-[11px]"
+                          className="field-input text-xs"
                         />
                       </div>
                     )}
@@ -503,10 +507,7 @@ function ProfileSummary({
   return (
     <section aria-labelledby="profile-heading">
       <div className="flex items-center justify-between mb-1.5">
-        <h2
-          id="profile-heading"
-          className="font-display text-xl text-foreground text-pretty font-semibold"
-        >
+        <h2 id="profile-heading" className="subsection-title">
           Extracted profile
         </h2>
         <button
@@ -552,7 +553,7 @@ function ProfileSummary({
                     }`}
                   ></span>
                   <span className="text-xs font-bold text-foreground block leading-tight font-body">{item.name}</span>
-                  <span className="text-[10px] text-faint block font-body">{dateStr}</span>
+                  <span className="text-xs text-faint block font-body">{dateStr}</span>
                 </div>
               );
             })}
@@ -937,7 +938,7 @@ function TrialCard({
                     : "Generate patient summary"}
               </button>
               {simplifiedGuide && !showOriginalSummary && (
-                <span className="text-[10px] text-faint font-body">
+                <span className="text-xs text-faint font-body">
                   Profile-specific summary; not medical advice
                 </span>
               )}
@@ -1025,8 +1026,8 @@ function TrialCard({
             <button
               type="button"
               onClick={onSaveToggle}
-              className={`text-xs font-body underline underline-offset-4 ${
-                isSaved ? "text-accent decoration-accent" : "text-primary decoration-border"
+              className={`btn-ghost text-xs min-h-9 px-3 py-1.5 ${
+                isSaved ? "border-accent text-accent" : ""
               }`}
             >
               {isSaved ? "On shortlist" : "Add to shortlist"}
@@ -1300,20 +1301,20 @@ function BiomarkerBooster({
   return (
     <div className="pt-4 space-y-3 text-left divider">
       <h3 className="font-display text-lg text-foreground mt-4">Suggested biomarker testing</h3>
-      <p className="text-[11px] text-faint leading-relaxed font-body">
+      <p className="text-xs text-faint leading-relaxed font-body">
         Trials for this diagnosis frequently require the following markers. Add confirmed results to refine matching:
       </p>
       <ul className="space-y-2.5 pt-1">
         {suggestions.slice(0, 3).map((s, idx) => (
-          <li key={idx} className="flex justify-between items-start gap-3 py-2 border-b border-border-subtle text-[11px] font-body last:border-0">
+          <li key={idx} className="flex justify-between items-start gap-3 py-2 border-b border-border-subtle text-xs font-body last:border-0">
             <div className="space-y-0.5">
               <span className="font-medium text-foreground block">{s.marker}</span>
-              <span className="text-[10px] text-faint block leading-tight">{s.reason}</span>
+              <span className="text-xs text-faint block leading-tight">{s.reason}</span>
             </div>
             <button
               type="button"
               onClick={() => handleAddMarker(s.marker)}
-              className="btn-ghost text-[10px] shrink-0"
+              className="btn-ghost text-xs shrink-0"
             >
               Add
             </button>
@@ -1503,10 +1504,10 @@ export default function ResultsDashboard({
   };
 
   return (
-    <div className="space-y-8">
+    <div className="results-page space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="flex-1">
-          <h2 className="font-display text-2xl text-foreground">
+          <h2 className="section-title">
             Search results
             {data.mode && (
               <span className="font-body text-sm font-normal text-faint ml-2">
@@ -1553,19 +1554,18 @@ export default function ResultsDashboard({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
-        <aside className="lg:col-span-4 xl:col-span-3 aside-rail space-y-8 lg:sticky lg:top-8">
-          <ProfileSelector currentProfile={profile} onSelectProfile={onProfileUpdate} />
-          <BiomarkerBooster profile={profile} onUpdate={onProfileUpdate} />
+      <div className="results-body">
+        <aside className="lg:col-span-4 aside-rail results-sidebar space-y-6 order-1">
+          <ProfileSummary profile={profile} onUpdate={onProfileUpdate} />
           <RegistryStatus
             summaries={displayData.registrySummaries}
             whoSearchState={whoSearchState}
           />
-
-          <ProfileSummary profile={profile} onUpdate={onProfileUpdate} />
+          <BiomarkerBooster profile={profile} onUpdate={onProfileUpdate} />
+          <ProfileSelector currentProfile={profile} onSelectProfile={onProfileUpdate} />
         </aside>
 
-        <div className="lg:col-span-8 xl:col-span-9">
+        <div className="lg:col-span-8 order-2 min-w-0">
           {activeTab === "results" ? (
             <div
               className={`transition-opacity duration-200 ${
@@ -1649,12 +1649,12 @@ export default function ResultsDashboard({
                             <h4 className="font-display text-xs text-foreground line-clamp-3 leading-snug">
                               {item.trial.title}
                             </h4>
-                            <p className="text-[10px] text-faint">{item.trial.trialId}</p>
+                            <p className="text-xs text-faint">{item.trial.trialId}</p>
 
                             <select
                               value={item.boardStatus}
                               onChange={(e) => moveTrialStatus(item.trial.trialId, e.target.value)}
-                              className="field-select text-[10px] mt-2"
+                              className="field-select text-xs mt-2"
                             >
                               <option value="saved">Saved</option>
                               <option value="contacted">Contacted</option>
@@ -1666,7 +1666,7 @@ export default function ResultsDashboard({
                             <button
                               type="button"
                               onClick={() => removeSavedTrial(item.trial.trialId)}
-                              className="text-[10px] text-destructive hover:underline block mt-1"
+                              className="text-xs text-destructive hover:underline block mt-1"
                             >
                               Remove
                             </button>

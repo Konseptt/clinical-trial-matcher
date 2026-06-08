@@ -91,10 +91,7 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
   return (
     <section aria-labelledby="notes-heading">
       <form onSubmit={handleSubmit} noValidate>
-        <h2
-          id="notes-heading"
-          className="font-display text-2xl text-foreground text-pretty mb-2"
-        >
+        <h2 id="notes-heading" className="section-title mb-3">
           {isPatient ? "Clinical summary" : "Clinical notes"}
         </h2>
         <p className="section-hint mb-6">
@@ -147,13 +144,13 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
           </p>
         )}
 
-        <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-4">
-          <button type="submit" className="btn-primary">
+        <div className="mt-8 flex flex-col sm:flex-row sm:items-stretch gap-3">
+          <button type="submit" className="btn-primary w-full sm:w-auto">
             {isPatient ? "Search trials" : "Run search"}
           </button>
           <Link
             href={isPatient ? "/?sample=patient" : "/?sample=1"}
-            className="btn-ghost"
+            className="btn-secondary w-full sm:w-auto"
           >
             Load sample case
           </Link>
@@ -187,12 +184,12 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
                         <span className="font-bold text-foreground block">
                           {p.name}
                         </span>
-                        <span className="text-[10px] text-faint">
+                        <span className="text-xs text-faint">
                           {p.profile.primaryDiagnosis}{" "}
                           {p.profile.stage ? `(${p.profile.stage})` : ""}
                         </span>
                       </div>
-                      <span className="text-[10px] text-primary underline underline-offset-2">
+                      <span className="text-xs text-primary underline underline-offset-2">
                         Load
                       </span>
                     </button>
@@ -216,7 +213,7 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
                       className="text-left w-full py-3 border-b border-border-subtle text-sm transition-colors cursor-pointer hover:text-primary"
                       title="Restore to form"
                     >
-                      <span className="text-faint text-[10px] block mb-0.5">
+                      <span className="text-faint text-xs block mb-1">
                         {new Date(item.timestamp).toLocaleDateString()}
                       </span>
                       <span className="text-foreground leading-tight text-pretty font-body line-clamp-2">

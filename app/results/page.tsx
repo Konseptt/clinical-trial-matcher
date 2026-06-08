@@ -98,17 +98,12 @@ export default function ResultsPage() {
   }
 
   return (
-    <div>
+    <div className="w-full">
       <ResultsDashboard 
         data={data} 
         onProfileUpdate={handleProfileUpdate} 
         isUpdating={isUpdating} 
       />
-      <div className="mt-10 pt-6 border-t border-border-subtle">
-        <Link href="/" className="btn-ghost">
-          Initiate new search
-        </Link>
-      </div>
     </div>
   );
 }

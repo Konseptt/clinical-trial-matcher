@@ -18,13 +18,10 @@ export default function AnalysisIntro({ mode }: { mode: AppMode }) {
 
   return (
     <section aria-labelledby="analysis-heading" className="lg:sticky lg:top-8">
-      <h2
-        id="analysis-heading"
-        className="font-display text-xl text-foreground text-pretty mb-2"
-      >
+      <h2 id="analysis-heading" className="subsection-title mb-1">
         Process overview
       </h2>
-      <p className="section-hint text-xs mb-5">Four stages</p>
+      <p className="section-eyebrow mb-5">Four stages</p>
 
       <ol className="timeline-rail" aria-label="Process overview">
         {steps.map((step, i) => (
@@ -32,7 +29,7 @@ export default function AnalysisIntro({ mode }: { mode: AppMode }) {
             <span className="step-number" aria-hidden="true">
               {i + 1}
             </span>
-            <span className="text-foreground/90 leading-relaxed text-[0.95rem] pt-1">
+            <span className="font-body text-base text-foreground/90 pt-0.5">
               {step}
             </span>
           </li>
