@@ -1,0 +1,280 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #2f5d50;
+  --color-on-primary: #faf9f6;
+  --color-secondary: #4a7c6f;
+  --color-accent: #b55233;
+  --color-accent-dark: #8f3e25;
+  --color-background: #f0ede6;
+  --color-foreground: #1a2822;
+  --color-muted: #e4e8e4;
+  --color-surface: #faf9f6;
+  --color-border: #c5cec4;
+  --color-destructive: #a63d40;
+  --color-ring: #2f5d50;
+  --color-faint: #5c6f66;
+  --color-match-high: #2f5d50;
+  --color-match-mid: #c4841d;
+  --color-match-low: #a63d40;
+  --color-border-subtle: #d8dfd8;
+  --color-muted-panel: #e4e8e4;
+  --color-faint-muted: #8a9a92;
+  --color-body-muted: #3d4f47;
+  --shadow-card: 0 2px 8px rgba(26, 40, 34, 0.06);
+  --shadow-card-hover: 0 4px 16px rgba(26, 40, 34, 0.1);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  body {
+    @apply bg-background text-foreground font-body text-base leading-relaxed;
+    background-image: linear-gradient(
+        160deg,
+        rgba(47, 93, 80, 0.05) 0%,
+        transparent 50%
+      ),
+      linear-gradient(20deg, rgba(181, 82, 51, 0.03) 0%, transparent 45%);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(47, 93, 80, 0.12);
+  }
+
+  ::selection {
+    background-color: rgba(47, 93, 80, 0.2);
+    color: var(--color-foreground);
+  }
+}
+
+@layer components {
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50
+      focus:px-4 focus:py-3 focus:bg-surface focus:text-foreground
+      focus:border-2 focus:border-ring focus:font-body focus:text-sm;
+  }
+
+  .section-label {
+    @apply font-body text-sm font-semibold text-body-muted;
+  }
+
+  .section-hint {
+    @apply font-body text-sm text-faint leading-relaxed;
+  }
+
+  .field-label {
+    @apply font-body text-sm font-medium text-faint;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center min-h-11 min-w-11
+      font-body text-base font-semibold text-on-primary cursor-pointer
+      bg-accent border-2 border-accent px-8 py-3 rounded-lg
+      hover:bg-accent-dark hover:border-accent-dark
+      disabled:opacity-40 disabled:cursor-not-allowed
+      disabled:hover:bg-accent disabled:hover:border-accent
+      transition-[background-color,border-color,transform] duration-200
+      focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2
+      active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center min-h-11 min-w-11
+      font-body text-sm font-medium text-primary cursor-pointer
+      underline underline-offset-2
+      transition-colors duration-200
+      focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2;
+    text-decoration-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+  }
+
+  .btn-ghost:hover {
+    text-decoration-color: var(--color-primary);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center min-h-11
+      font-body text-sm font-medium text-primary cursor-pointer
+      bg-surface border border-border rounded-lg px-5 py-2.5
+      hover:bg-muted
+      transition-colors duration-200
+      focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+
+  .btn-secondary:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+  }
+
+  .notes-field {
+    @apply w-full bg-surface border border-border rounded-xl
+      px-5 py-5 font-body text-base text-foreground leading-relaxed
+      resize-y min-h-[260px]
+      focus:outline-none focus:ring-[3px] focus:ring-ring focus:ring-offset-0
+      disabled:opacity-50 disabled:cursor-not-allowed;
+    box-shadow: var(--shadow-card);
+  }
+
+  .notes-field::placeholder {
+    color: color-mix(in srgb, var(--color-faint) 55%, transparent);
+  }
+
+  .notes-field[aria-invalid="true"] {
+    @apply border-destructive;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-destructive) 20%, transparent);
+  }
+
+  .info-card {
+    @apply bg-surface border border-border-subtle rounded-xl px-5 py-6;
+    box-shadow: var(--shadow-card);
+  }
+
+  .chart-panel {
+    @apply info-card;
+  }
+
+  .trial-card {
+    @apply bg-surface border border-border-subtle rounded-xl p-5 sm:p-6;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 200ms ease;
+  }
+
+  .trial-card:hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  .step-pill {
+    @apply inline-flex items-center gap-2 font-body text-sm text-body-muted
+      bg-muted/60 rounded-full px-3.5 py-1.5;
+  }
+
+  .status-pill {
+    @apply inline-block font-body text-xs font-medium rounded-full px-2.5 py-0.5;
+  }
+
+  .status-pill-open {
+    @apply status-pill text-primary;
+    background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  }
+
+  .status-pill-closed {
+    @apply status-pill bg-muted text-faint;
+  }
+
+  .registry-chip {
+    @apply inline-block font-body text-xs font-medium text-primary
+      rounded-md px-2 py-0.5;
+    background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 15%, transparent);
+  }
+
+  .match-badge {
+    @apply inline-flex flex-col items-center rounded-xl px-4 py-2.5 text-center min-w-[5.5rem];
+  }
+
+  .match-badge-high {
+    @apply match-badge border-2;
+    background-color: color-mix(in srgb, var(--color-match-high) 8%, transparent);
+    border-color: color-mix(in srgb, var(--color-match-high) 25%, transparent);
+  }
+
+  .match-badge-mid {
+    @apply match-badge border-2;
+    background-color: color-mix(in srgb, var(--color-match-mid) 8%, transparent);
+    border-color: color-mix(in srgb, var(--color-match-mid) 25%, transparent);
+  }
+
+  .match-badge-low {
+    @apply match-badge border-2;
+    background-color: color-mix(in srgb, var(--color-match-low) 8%, transparent);
+    border-color: color-mix(in srgb, var(--color-match-low) 25%, transparent);
+  }
+
+  .match-score-num {
+    @apply font-display text-2xl leading-none tabular-nums;
+  }
+
+  .match-score-high .match-score-num {
+    @apply text-match-high;
+  }
+
+  .match-score-mid .match-score-num {
+    @apply text-match-mid;
+  }
+
+  .match-score-low .match-score-num {
+    @apply text-match-low;
+  }
+
+  .match-score-label {
+    @apply font-body text-xs font-medium text-faint mt-1;
+  }
+
+  .profile-row {
+    @apply flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4 py-3.5
+      border-b border-border-subtle last:border-0;
+  }
+
+  .profile-label {
+    @apply font-body text-sm font-medium text-faint sm:w-36 shrink-0;
+  }
+
+  .profile-value {
+    @apply font-body text-base text-foreground break-words;
+  }
+
+  .trial-enter {
+    animation: trial-fade 400ms ease-out both;
+  }
+
+  .loading-step-active {
+    @apply flex items-start gap-3 font-body text-base text-foreground;
+  }
+
+  .loading-step-wait {
+    @apply flex items-start gap-3 font-body text-base text-faint-muted;
+  }
+
+  .loading-dot {
+    @apply w-2 h-2 rounded-full bg-primary mt-2 shrink-0;
+    animation: pulse-dot 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes trial-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trial-enter,
+  .loading-dot {
+    animation: none;
+  }
+}
