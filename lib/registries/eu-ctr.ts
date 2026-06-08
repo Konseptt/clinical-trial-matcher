@@ -1,3 +1,4 @@
+import { resolveRegistryCountry } from "@/lib/location";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
 
 const LEGACY_SEARCH =
@@ -81,8 +82,9 @@ function buildLegacySearchUrl(params: RegistrySearchParams): string {
     status: "ongoing",
   });
 
-  if (params.location?.country) {
-    const cleanCountry = sanitizeQueryParam(params.location.country);
+  const registryCountry = resolveRegistryCountry(params.location);
+  if (registryCountry) {
+    const cleanCountry = sanitizeQueryParam(registryCountry);
     if (cleanCountry) {
       search.set("country", cleanCountry);
     }

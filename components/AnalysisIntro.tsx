@@ -7,21 +7,24 @@ export default function AnalysisIntro() {
   ];
 
   return (
-    <div className="mb-8">
-      <h2 id="analysis-heading" className="sr-only">
-        How trial matching works
+    <div className="info-card lg:sticky lg:top-8">
+      <h2
+        id="analysis-heading"
+        className="font-display text-xl text-foreground text-pretty mb-4"
+      >
+        How it works
       </h2>
 
-      <ol className="space-y-2.5" aria-label="How it works">
+      <ol className="space-y-4" aria-label="How it works">
         {steps.map((step, i) => (
           <li key={step} className="flex items-start gap-3">
             <span
-              className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-body text-xs font-semibold shrink-0 mt-0.5"
+              className="step-number"
               aria-hidden="true"
             >
               {i + 1}
             </span>
-            <span className="section-hint">{step}</span>
+            <span className="section-hint leading-relaxed">{step}</span>
           </li>
         ))}
       </ol>

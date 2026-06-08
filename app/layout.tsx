@@ -38,7 +38,7 @@ function Masthead() {
       <h1 className="font-display text-[2.25rem] sm:text-[2.75rem] leading-tight text-foreground text-pretty">
         Find clinical trials that may be a fit
       </h1>
-      <p className="section-hint mt-3 max-w-xl">
+      <p className="section-hint mt-3 max-w-3xl">
         Paste a short clinical summary. We read the key details, search major
         trial registries, and show the best matches ranked for you to review
         with a doctor.
@@ -62,13 +62,13 @@ export default function RootLayout({
           Skip to main content
         </a>
 
-        <div className="flex-1 w-full max-w-2xl mx-auto px-5 sm:px-8 py-10 md:py-14">
+        <div className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-14">
           <Masthead />
           <main id="main">{children}</main>
         </div>
 
         <footer className="mt-auto">
-          <div className="max-w-2xl mx-auto px-5 sm:px-8">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="border-t border-border-subtle" />
             <p className="py-7 section-hint text-xs">
               This tool is for research only. It does not store your notes, does

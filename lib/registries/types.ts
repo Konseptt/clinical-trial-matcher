@@ -59,10 +59,29 @@ export function buildRegistrySearchParams(
     terms.push("cancer");
   }
 
-  const condition = profile.primaryDiagnosis
+  let condition = profile.primaryDiagnosis
+    .replace(/^\s*stage\s+[ivx0-9]+[abc]?\s+/i, "")
     .replace(/\b(stage\s+[ivx0-9]+[abc]?)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  const lower = condition.toLowerCase();
+  for (const cancerType of [
+    "breast cancer",
+    "lung cancer",
+    "melanoma",
+    "lymphoma",
+    "leukemia",
+    "colon cancer",
+    "prostate cancer",
+    "ovarian cancer",
+    "pancreatic cancer",
+  ]) {
+    if (lower.includes(cancerType)) {
+      condition = cancerType;
+      break;
+    }
+  }
 
   return {
     condition: condition || terms[0],

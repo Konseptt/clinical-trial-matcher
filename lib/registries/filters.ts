@@ -1,3 +1,4 @@
+import { resolveRegistryCountry } from "@/lib/location";
 import type { RegistryTrial } from "./types";
 
 const RECRUITING_STATUSES = new Set([
@@ -77,7 +78,8 @@ export function matchesLocation(
     .map((l) => `${l.city} ${l.state} ${l.country}`.toLowerCase())
     .join(" ");
 
-  if (location.country && locText.includes(location.country.toLowerCase())) {
+  const registryCountry = resolveRegistryCountry(location);
+  if (registryCountry && locText.includes(registryCountry.toLowerCase())) {
     return true;
   }
   if (location.state && locText.includes(location.state.toLowerCase())) {

@@ -1,4 +1,5 @@
 import type { ClinicalTrialsGovResponse, ClinicalTrialsGovStudy } from "@/lib/types";
+import { resolveRegistryCountry } from "@/lib/location";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
 
 const API_BASE = "https://clinicaltrials.gov/api/v2/studies";
@@ -48,10 +49,11 @@ function buildAdvancedFilter(params: RegistrySearchParams): string {
   const phaseFilter =
     "(AREA[Phase]PHASE2 OR AREA[Phase]PHASE3 OR AREA[Phase]PHASE4)";
 
-  if (params.location?.country) {
-    const country = sanitizeQueryParam(params.location.country);
-    if (country) {
-      return `${phaseFilter} AND AREA[LocationCountry]${country}`;
+  const country = resolveRegistryCountry(params.location);
+  if (country) {
+    const cleanCountry = sanitizeQueryParam(country);
+    if (cleanCountry) {
+      return `${phaseFilter} AND AREA[LocationCountry]${cleanCountry}`;
     }
   }
 
@@ -66,20 +68,20 @@ export async function queryClinicalTrialsGov(
   const searchParams = new URLSearchParams({
     "query.cond": sanitizedCondition || "cancer",
     "filter.overallStatus": "RECRUITING,NOT_YET_RECRUITING",
-    pageSize: "15",
+    pageSize: "25",
     format: "json",
     fields:
       "NCTId,BriefTitle,OfficialTitle,OverallStatus,Phase,BriefSummary,EligibilityCriteria,Sex,MinimumAge,MaximumAge,LocationFacility,LocationCity,LocationState,LocationCountry",
   });
 
   if (params.biomarkers.length > 0) {
-    const cleanBiomarkers = params.biomarkers
+    const biomarkerTerms = params.biomarkers
       .map(sanitizeQueryParam)
       .filter(Boolean)
       .slice(0, 2);
-      
-    if (cleanBiomarkers.length > 0) {
-      searchParams.set("query.term", cleanBiomarkers.join(" OR "));
+
+    if (biomarkerTerms.length > 0) {
+      searchParams.set("query.term", biomarkerTerms[0]);
     }
   }
 

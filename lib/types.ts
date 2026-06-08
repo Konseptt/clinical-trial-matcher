@@ -4,6 +4,13 @@ export interface PatientLocation {
   country: string | null;
 }
 
+export interface TreatmentHistory {
+  name: string;
+  startDate?: string; // YYYY-MM
+  endDate?: string;   // YYYY-MM
+  ongoing: boolean;
+}
+
 export interface PatientProfile {
   age: number | null;
   sex: "male" | "female" | "unknown";
@@ -12,6 +19,9 @@ export interface PatientProfile {
   biomarkers: string[];
   priorTreatments: string[];
   location: PatientLocation | null;
+  hasMetastaticDisease: boolean | null;
+  interests: string[];
+  priorTreatmentsTimeline?: TreatmentHistory[];
 }
 
 export interface TrialLocation {
@@ -27,16 +37,55 @@ export type TrialRegistry =
   | "EU-CTR"
   | "ISRCTN";
 
+export interface MatchScoreBreakdown {
+  baseline: number;
+  diagnosisMatch: number;
+  biomarkerMatch: number;
+  interestsMatch: number;
+  priorTreatmentsMatch: number;
+  stageMatch: number;
+  phaseBonus: number;
+  locationMatch: number;
+  sexMatch: number;
+  biomarkerPenalties: number;
+  stagePenalties: number;
+  washoutPenalties?: number;
+  biomarkerGatesMatch?: number;
+}
+
+export interface BiomarkerGateRule {
+  marker: string;
+  expected: "positive" | "negative";
+  status: "matched" | "mismatched" | "neutral";
+}
+
+export interface BiomarkerGate {
+  gateType: "AND" | "OR" | "SINGLE";
+  rules: BiomarkerGateRule[];
+  passed: boolean;
+}
+
+export interface WashoutCheckResult {
+  treatmentName: string;
+  requiredDays: number;
+  actualDays: number | null;
+  status: "eligible" | "ineligible" | "unknown";
+}
+
 export interface MatchedTrial {
   registry: TrialRegistry;
   trialId: string;
   title: string;
   matchScore: number;
+  scoreBreakdown: MatchScoreBreakdown;
   phase: string;
   summary: string;
   locations: TrialLocation[];
   status: string;
   url: string;
+  distance: number | null;
+  biomarkerGates?: BiomarkerGate[];
+  washoutChecks?: WashoutCheckResult[];
 }
 
 export interface RegistryQuerySummary {

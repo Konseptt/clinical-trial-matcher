@@ -1,18 +1,51 @@
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
 
 const LEGACY_XML =
-  "https://www.isrctn.com/api/query/default";
+  "https://www.isrctn.com/api/query/format/default";
 const TRACKER_URL = "https://www.isrctn.com/vueajax/search/tracker";
 
 function parseLegacyXml(xml: string): RegistryTrial[] {
   const trials: RegistryTrial[] = [];
-  const blocks = xml.split("<trial>").slice(1);
+  const blocks = xml.split("<fullTrial>").slice(1);
 
   for (const block of blocks) {
-    const id = block.match(/<isrctnId>([^<]+)/)?.[1];
+    const id = block.match(/<isrctn[^>]*>([^<]+)/)?.[1];
     const title = block.match(/<title>([^<]+)/)?.[1];
-    const status = block.match(/<recruitmentStatus>([^<]+)/)?.[1];
-    const phase = block.match(/<phase>([^<]+)/)?.[1];
+    const phase = block.match(/<phase[^>]*>([^<]+)/)?.[1];
+
+    const startStr = block.match(/<recruitmentStart>([^<]+)/)?.[1];
+    const endStr = block.match(/<recruitmentEnd>([^<]+)/)?.[1];
+    let status = "Unknown";
+    if (startStr && endStr) {
+      const start = new Date(startStr);
+      const end = new Date(endStr);
+      const now = new Date();
+      if (now >= start && now <= end) {
+        status = "Recruiting";
+      } else if (now < start) {
+        status = "Not yet recruiting";
+      } else {
+        status = "Completed";
+      }
+    }
+
+    const inclusion = block.match(/<inclusion>([\s\S]*?)<\/inclusion>/i)?.[1] ?? "";
+    const exclusion = block.match(/<exclusion>([\s\S]*?)<\/exclusion>/i)?.[1] ?? "";
+    const eligibilityText = `Inclusion Criteria:\n${inclusion}\n\nExclusion Criteria:\n${exclusion}`.trim();
+
+    const plainEnglish = block.match(/<plainEnglishSummary>([\s\S]*?)<\/plainEnglishSummary>/i)?.[1] ?? "";
+    const hypothesis = block.match(/<studyHypothesis>([\s\S]*?)<\/studyHypothesis>/i)?.[1] ?? "";
+    const summary = (plainEnglish && !plainEnglish.includes("Not provided"))
+      ? plainEnglish.trim()
+      : hypothesis.trim() || "ISRCTN registered trial.";
+
+    const countriesMatches = [...block.matchAll(/<country>([^<]+)/g)];
+    const locations = countriesMatches.map(m => ({
+      facility: "Recruitment Site",
+      city: "",
+      state: "",
+      country: m[1].trim()
+    }));
 
     if (!id || !title) continue;
 
@@ -21,11 +54,11 @@ function parseLegacyXml(xml: string): RegistryTrial[] {
       trialId: id,
       title: title.trim(),
       phase: phase?.trim() || "Not specified",
-      summary: "ISRCTN registered trial.",
-      status: status?.trim() ?? "Unknown",
-      locations: [],
-      eligibilityText: "",
-      url: `https://www.isrctn.com/${id}`,
+      summary,
+      status,
+      locations,
+      eligibilityText,
+      url: `https://www.isrctn.com/ISRCTN${id}`,
     });
   }
 
