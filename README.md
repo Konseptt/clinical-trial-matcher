@@ -57,6 +57,37 @@ Or use **Load sample case** on the home page.
 
 ## How matching works
 
+```mermaid
+flowchart TD
+  A[Clinical input] --> B{Mode}
+  B -->|Patient| C[NVIDIA extraction]
+  B -->|Clinician| D[Rule-based extraction]
+  C --> E[Structured patient profile]
+  D --> E
+
+  E --> F[Build registry queries]
+  F --> G[ClinicalTrials.gov]
+  F --> H[EU-CTR]
+  F --> I[WHO ICTRP]
+  F --> J[ISRCTN]
+
+  G --> K[Merge and deduplicate]
+  H --> K
+  I --> K
+  J --> K
+
+  K --> L[Filter recruiting studies]
+  L --> M[Score and rank trials]
+  M --> N[Results dashboard]
+
+  I -.->|If server blocked| O[Browser WHO supplement]
+  O --> P[Merge into results]
+  P --> N
+
+  N --> Q[Edit profile or shortlist trials]
+  Q --> R[Optional patient summary via NVIDIA]
+```
+
 1. Clinical input is parsed into a structured patient profile
 2. Registry-specific queries are built from diagnosis, biomarkers, and location
 3. Results are merged, filtered (recruiting / not yet recruiting, phase II+ preferred), and scored
