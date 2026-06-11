@@ -5,6 +5,10 @@ const CANCER_TYPES = [
   "breast cancer",
   "lung cancer",
   "melanoma",
+  // More specific terms first: "lymphoma" would otherwise swallow
+  // "non-hodgkin lymphoma" / "hodgkin lymphoma" before they are reached.
+  "non-hodgkin",
+  "hodgkin",
   "lymphoma",
   "leukemia",
   "glioblastoma",
@@ -15,8 +19,6 @@ const CANCER_TYPES = [
   "nsclc",
   "sclc",
   "multiple myeloma",
-  "hodgkin",
-  "non-hodgkin",
 ];
 
 function findFirstMatch(text: string, patterns: RegExp[]): string | null {
@@ -117,6 +119,48 @@ function extractPriorTreatments(rawText: string): string[] {
   );
 }
 
+function buildTreatmentTimeline(
+  rawText: string,
+  treatments: string[]
+): { name: string; ongoing: boolean; endDate?: string }[] {
+  const now = Date.now();
+  const DAY_MS = 1000 * 60 * 60 * 24;
+  // Scope cues to the sentence mentioning the treatment. A blind character
+  // window bleeds into adjacent sentences, so "completed radiation 6 months
+  // ago. Currently on trastuzumab" would mark radiation as ongoing.
+  const sentences = rawText.split(/(?<=[.;\n])\s+/);
+
+  return treatments.map((name) => {
+    const key = name.toLowerCase();
+    const sentence =
+      sentences.find((s) => s.toLowerCase().includes(key))?.toLowerCase() ?? "";
+
+    if (/\b(ongoing|currently|current|continues|still on|maintenance)\b/.test(sentence)) {
+      return { name, ongoing: true };
+    }
+
+    // Relative end date, e.g. "completed chemotherapy 6 months ago".
+    const rel = sentence.match(/(\d+)\s*(day|week|month|year)s?\s*ago/);
+    if (rel) {
+      const value = parseInt(rel[1], 10);
+      const unit = rel[2];
+      const days =
+        unit === "day"
+          ? value
+          : unit === "week"
+          ? value * 7
+          : unit === "month"
+          ? value * 30
+          : value * 365;
+      const endDate = new Date(now - days * DAY_MS).toISOString().slice(0, 10);
+      return { name, ongoing: false, endDate };
+    }
+
+    // No temporal info: leave undated so washout resolves to "unknown".
+    return { name, ongoing: false };
+  });
+}
+
 export function extractPatientProfile(rawText: string): PatientProfile {
   const normalizedText = rawText.replace(/\s+/g, " ");
   const text = normalizedText.toLowerCase();
@@ -169,10 +213,10 @@ export function extractPatientProfile(rawText: string): PatientProfile {
     interests.push("immunotherapy");
   }
 
-  const priorTreatmentsTimeline = priorTreatments.map(name => ({
-    name,
-    ongoing: false
-  }));
+  const priorTreatmentsTimeline = buildTreatmentTimeline(
+    normalizedText,
+    priorTreatments
+  );
 
   return {
     age,

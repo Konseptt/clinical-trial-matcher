@@ -724,7 +724,7 @@ function RegistryStatus({
 
 function generatePersonalizedQuestions(profile: PatientProfile, trial: MatchedTrial): string[] {
   const qs = [
-    `What is the expected efficacy of this Phase ${trial.phase} protocol relative to current standard of care?`,
+    `What is the expected efficacy of this ${trial.phase} protocol relative to current standard of care?`,
   ];
   if (profile.biomarkers.length > 0) {
     qs.push(`Does eligibility require or target the following biomarkers: ${profile.biomarkers.join(", ")}?`);
@@ -1483,16 +1483,17 @@ export default function ResultsDashboard({
 
   const handleExportCSV = () => {
     const headers = ["Title", "Registry", "TrialID", "Status", "Phase", "MatchScore", "BoardStatus"];
+    const csvCell = (value: string) => `"${String(value).replace(/"/g, '""')}"`;
     const rows = savedTrials.map((item) => [
-      `"${item.trial.title.replace(/"/g, '""')}"`,
+      item.trial.title,
       item.trial.registry,
       item.trial.trialId,
       item.trial.status,
       item.trial.phase,
       `${item.trial.matchScore}%`,
       item.boardStatus,
-    ]);
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    ].map(csvCell));
+    const csvContent = [headers.map(csvCell).join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

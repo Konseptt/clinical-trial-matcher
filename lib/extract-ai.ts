@@ -68,9 +68,14 @@ function coercePatientProfile(
   const primaryDiagnosis =
     asString(record.primaryDiagnosis) || fallback.primaryDiagnosis;
 
+  // normalizeSex returns "unknown" (never null) when the model omits sex, so a
+  // plain ?? never reaches the fallback. Only override the regex-derived
+  // fallback when the model actually resolved a sex.
+  const aiSex = normalizeSex(record.sex);
+
   return {
     age,
-    sex: normalizeSex(record.sex) ?? fallback.sex,
+    sex: aiSex !== "unknown" ? aiSex : fallback.sex,
     primaryDiagnosis,
     stage: asString(record.stage) || fallback.stage,
     biomarkers: asStringArray(record.biomarkers, 15).length

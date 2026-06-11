@@ -68,11 +68,17 @@ export function parseLocationFromNotes(rawText: string): PatientLocation | null 
       let country: string | null =
         parts.length >= 3 ? normalizeCountry(parts[2]) : null;
 
-      if (!country && US_STATE_CODES.has(state.toUpperCase())) {
+      const isUsState = US_STATE_CODES.has(state.toUpperCase());
+      if (!country && isUsState) {
         country = "United States";
       }
 
-      return { city, state, country };
+      // Only accept when the second token is a real state code or a known
+      // country. The "from" keyword otherwise grabs clinical phrases such as
+      // "suffers from breast cancer, stage IV" as a bogus city/state.
+      if (isUsState || country || isKnownCountry(state)) {
+        return { city, state, country };
+      }
     }
 
     if (parts.length === 1 && isKnownCountry(parts[0])) {

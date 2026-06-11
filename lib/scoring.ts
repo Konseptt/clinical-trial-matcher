@@ -14,24 +14,33 @@ function textContains(text: string, term: string): boolean {
   return text.toLowerCase().includes(term.toLowerCase());
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function getDaysSinceDate(dateStr: string): number {
   const date = new Date(dateStr);
   const today = new Date();
   const diffTime = today.getTime() - date.getTime();
-  return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+  return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 }
 
 export function extractWashoutPeriod(eligibilityText: string, treatmentName: string): number | null {
   const text = eligibilityText.toLowerCase();
   const name = treatmentName.toLowerCase();
-  
-  if (!text.includes(name)) return null;
-  
+
+  if (!name || !text.includes(name)) return null;
+
+  // Treatment names come from user-editable fields and may contain regex
+  // metacharacters (e.g. "5-FU (bolus)"). Escape before interpolating, or an
+  // unbalanced "(" throws and rejects the whole scoring batch.
+  const safeName = escapeRegExp(name);
+
   const patterns = [
-    new RegExp(`${name}[^.]*?(?:at least|minimum of|washout|interval of)\\s*(\\d+)\\s*(day|week|month)`, "i"),
-    new RegExp(`(\\d+)\\s*(day|week|month)s?\\s*(?:since|after|prior to)[^.]*?${name}`, "i"),
-    new RegExp(`washout(?:\\s+period)?\\s+(?:of\\s+)?(\\d+)\\s*(day|week|month)s?[^.]*?${name}`, "i"),
-    new RegExp(`(\\d+)\\s*-\\s*(day|week|month)\\s+washout[^.]*?${name}`, "i"),
+    new RegExp(`${safeName}[^.]*?(?:at least|minimum of|washout|interval of)\\s*(\\d+)\\s*(day|week|month)`, "i"),
+    new RegExp(`(\\d+)\\s*(day|week|month)s?\\s*(?:since|after|prior to)[^.]*?${safeName}`, "i"),
+    new RegExp(`washout(?:\\s+period)?\\s+(?:of\\s+)?(\\d+)\\s*(day|week|month)s?[^.]*?${safeName}`, "i"),
+    new RegExp(`(\\d+)\\s*-\\s*(day|week|month)\\s+washout[^.]*?${safeName}`, "i"),
   ];
   
   for (const pattern of patterns) {
@@ -230,6 +239,7 @@ function hasContradictoryStageContext(
   if (profile.hasMetastaticDisease !== false) return 0;
 
   let penalty = 0;
+  // "advanced or metastatic" dropped: it is already covered by "metastatic".
   const metastaticTerms = [
     "metastatic",
     "metastases",
@@ -237,14 +247,18 @@ function hasContradictoryStageContext(
     "leptomeningeal",
     "brain metastas",
     "stage iv",
-    "advanced or metastatic",
-    "m1",
   ];
 
   for (const term of metastaticTerms) {
     if (combined.includes(term)) {
       penalty += 12;
     }
+  }
+
+  // "M1" (TNM distant-metastasis stage) must match as a standalone token,
+  // otherwise it false-positives inside "arm1", "form1", etc.
+  if (/\bm1\b/i.test(combined)) {
+    penalty += 12;
   }
 
   return Math.min(penalty, 35);
@@ -279,13 +293,21 @@ async function scoreTrial(
     if (combined.includes(markerLower)) {
       biomarkerMatchRaw += 10;
     } else if (markerLower.includes("positive")) {
-      const base = markerLower.replace(/\s*positive/, "").trim();
-      if (combined.includes(`${base} positive`) || combined.includes(`${base}+`)) {
+      const base = escapeRegExp(markerLower.replace(/\s*positive/, "").trim());
+      // Match "her2 positive", "her2-positive", "her2 pos", "her2+". The plain
+      // space form alone missed the common hyphenated registry spelling.
+      if (
+        new RegExp(`\\b${base}[\\s-]*(?:positive|pos)\\b`).test(combined) ||
+        new RegExp(`\\b${base}\\+`).test(combined)
+      ) {
         biomarkerMatchRaw += 10;
       }
     } else if (markerLower.includes("negative")) {
-      const base = markerLower.replace(/\s*negative/, "").trim();
-      if (combined.includes(`${base} negative`) || combined.includes(`${base}-`)) {
+      const base = escapeRegExp(markerLower.replace(/\s*negative/, "").trim());
+      // Require an explicit "negative"/"neg" token. A bare "her2-" dash also
+      // occurs inside "her2-positive", so matching on the dash wrongly counted
+      // an opposite-polarity trial as a biomarker match.
+      if (new RegExp(`\\b${base}[\\s-]*(?:negative|neg)\\b`).test(combined)) {
         biomarkerMatchRaw += 10;
       }
     }
@@ -368,10 +390,13 @@ async function scoreTrial(
   // 8. Sex Match
   let sexMatch = 0;
   if (profile.sex !== "unknown") {
-    if (profile.sex === "female" && combined.includes("female")) sexMatch += 4;
-    if (profile.sex === "male" && combined.includes("male")) sexMatch += 4;
-    if (profile.sex === "female" && /male only/i.test(combined)) sexMatch -= 20;
-    if (profile.sex === "male" && /female only/i.test(combined)) sexMatch -= 20;
+    // Use word boundaries: "female" contains the substring "male", so plain
+    // includes() would cross-match female trials for male patients and fire the
+    // "male only" penalty on a "female only" trial.
+    if (profile.sex === "female" && /\bfemale\b/i.test(combined)) sexMatch += 4;
+    if (profile.sex === "male" && /\bmale\b/i.test(combined)) sexMatch += 4;
+    if (profile.sex === "female" && /\bmale only\b/i.test(combined)) sexMatch -= 20;
+    if (profile.sex === "male" && /\bfemale only\b/i.test(combined)) sexMatch -= 20;
   }
 
   // 9. Biomarker Logic Gates Check

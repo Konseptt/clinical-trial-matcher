@@ -45,16 +45,21 @@ export function isOpenRecruitmentStatus(status: string): boolean {
 }
 
 export function parsePhaseRank(phase: string): number {
-  const text = phase.toUpperCase();
-  if (text.includes("IV")) return 4;
-  if (text.includes("III")) return 3;
-  if (text.includes("II")) return 2;
-  if (text.includes("I/II") || text.includes("1/2")) return 2;
-  if (text.includes("II/III") || text.includes("2/3")) return 3;
-  if (text.includes("I") && !text.includes("II") && !text.includes("III")) {
-    return 1;
+  // Phase strings arrive in both roman ("Phase II") and arabic ("Phase 2")
+  // form depending on the registry. Normalize roman numerals to digits, then
+  // take the highest phase number mentioned (handles combos like "1/2", "2/3").
+  const normalized = phase
+    .toUpperCase()
+    .replace(/\bIV\b/g, "4")
+    .replace(/\bIII\b/g, "3")
+    .replace(/\bII\b/g, "2")
+    .replace(/\bI\b/g, "1");
+
+  const nums = normalized.match(/(?<![0-9])[0-4](?![0-9])/g);
+  if (nums && nums.length > 0) {
+    return Math.max(...nums.map((n) => parseInt(n, 10)));
   }
-  if (text.includes("0")) return 0;
+
   return 0;
 }
 

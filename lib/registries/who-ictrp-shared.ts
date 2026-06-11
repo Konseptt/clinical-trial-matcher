@@ -44,7 +44,11 @@ export function parseWhoSearchResults(html: string): RegistryTrial[] {
       trialId,
       title: titleMatch[1].trim(),
       phase: phaseMatch?.[1]?.trim() || "Not specified",
-      summary: registryMatch?.[1]?.trim() ?? "WHO ICTRP indexed trial.",
+      // The WHO results page exposes the sponsor, not a study abstract. Label it
+      // as such so it is not mistaken for a trial summary.
+      summary: registryMatch?.[1]?.trim()
+        ? `Sponsor: ${registryMatch[1].trim()}`
+        : "WHO ICTRP indexed trial.",
       status: statusMatch?.[1]?.trim() ?? "Unknown",
       locations: [],
       eligibilityText: "",

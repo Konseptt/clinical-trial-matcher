@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.ts";
 
 :root {
   --color-primary: #2a4a40;
@@ -394,11 +393,11 @@
   }
 
   .loading-step-active {
-    @apply timeline-step font-body text-base text-foreground;
+    @apply relative flex items-start gap-4 py-4 font-body text-base text-foreground;
   }
 
   .loading-step-wait {
-    @apply timeline-step font-body text-base text-faint-muted;
+    @apply relative flex items-start gap-4 py-4 font-body text-base text-faint-muted;
   }
 
   .loading-dot {

@@ -10,7 +10,7 @@ function sanitizeQueryParam(val: string): string {
   return val.replace(/[^a-zA-Z0-9\s\-\/]/g, "").trim();
 }
 
-function normalizePhase(phases?: string[]): string {
+export function normalizePhase(phases?: string[]): string {
   if (!phases || phases.length === 0) return "Not specified";
   return phases
     .map((p) => {
@@ -20,7 +20,7 @@ function normalizePhase(phases?: string[]): string {
     .join(", ");
 }
 
-function mapStudy(study: ClinicalTrialsGovStudy): RegistryTrial {
+export function mapStudy(study: ClinicalTrialsGovStudy): RegistryTrial {
   const id = study.protocolSection.identificationModule;
   const locations =
     study.protocolSection.contactsLocationsModule?.locations ?? [];

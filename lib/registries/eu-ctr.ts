@@ -51,15 +51,18 @@ function shouldApplyEuCountryFilter(params: RegistrySearchParams): boolean {
   return EU_SEARCH_COUNTRIES.has(registryCountry.toLowerCase());
 }
 
-function extractPhaseFromTitle(title: string): string {
+export function extractPhaseFromTitle(title: string): string {
   const match = title.match(
     /\bphase\s*(i{1,3}v?|iv|0|[1-4])(?:\s*\/\s*(i{1,3}v?|iv|[1-4]))?\b/i
   );
   if (!match) return "Not specified";
-  return `Phase ${match[1].toUpperCase()}`;
+  const primary = match[1].toUpperCase();
+  // Preserve the combined phase ("I/II"); dropping match[2] understated the
+  // phase and got such trials filtered out as below phase II.
+  return match[2] ? `Phase ${primary}/${match[2].toUpperCase()}` : `Phase ${primary}`;
 }
 
-function parseLegacyHtml(html: string): RegistryTrial[] {
+export function parseLegacyHtml(html: string): RegistryTrial[] {
   const blocks = html.split('<table class="result">').slice(1);
   const trials: RegistryTrial[] = [];
   const seen = new Set<string>();

@@ -5,7 +5,7 @@ const LEGACY_XML =
   "https://www.isrctn.com/api/query/format/default";
 const TRACKER_URL = "https://www.isrctn.com/vueajax/search/tracker";
 
-function parseLegacyXml(xml: string): RegistryTrial[] {
+export function parseLegacyXml(xml: string): RegistryTrial[] {
   const trials: RegistryTrial[] = [];
   const blocks = xml.split("<fullTrial>").slice(1);
 

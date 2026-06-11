@@ -20,7 +20,9 @@ function dedupeTrials(trials: RegistryTrial[]): RegistryTrial[] {
 
   for (const trial of trials) {
     const idKey = `${trial.registry}:${trial.trialId}`.toLowerCase();
-    const titleKey = trial.title.toLowerCase().slice(0, 60);
+    // Match on the full normalized title. A 60-char prefix collapses distinct
+    // trials that share a boilerplate opening ("A Phase 3 Study of ...").
+    const titleKey = trial.title.toLowerCase().replace(/\s+/g, " ").trim();
     if (seenIds.has(idKey) || seenTitles.has(titleKey)) continue;
     seenIds.add(idKey);
     seenTitles.add(titleKey);
