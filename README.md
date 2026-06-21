@@ -2,7 +2,7 @@
 
 Search international clinical trial registries using patient clinical information. Supports patient narrative input and clinician chart notes, with ranked results from multiple public databases.
 
-**Live:** https://clinical-trial-matcher-beta.vercel.app
+**Live:** https://clinicaltrial.ranjansharma.info.np/
 
 ## Features
 
@@ -15,8 +15,8 @@ Search international clinical trial registries using patient clinical informatio
 
 ## Requirements
 
-- Node.js 18+
-- npm
+- Node.js 18+ (recommended). Newer LTS releases are supported.
+- npm (or a compatible package manager such as `pnpm` or `yarn`)
 
 ## Setup
 
@@ -45,6 +45,8 @@ cp .env.example .env.local
 The API key is server-side only. Clinician mode works without it.
 
 When configured, trial cards also support **Generate patient summary** for consultation materials.
+ 
+Note: example variables are in `.env.example`. Keys are used server-side only; do not commit secrets.
 
 ## Sample cases
 
@@ -116,6 +118,22 @@ lib/
 
 The browser stores saved profiles, search history, shortlisted trials, and match timestamps in `localStorage` / `sessionStorage`. No server-side persistence.
 
+## Testing & linting
+
+Run unit tests with Vitest:
+
+```bash
+npm run test
+```
+
+Run the linter:
+
+```bash
+npm run lint
+```
+
+Tests are under the `tests/` directory and cover extraction, registry connectors, and scoring logic.
+
 ## Scripts
 
 ```bash
@@ -125,7 +143,21 @@ npm run start    # Production server
 npm run lint     # ESLint
 ```
 
+Other useful scripts:
+
+```bash
+npm run test     # Run unit tests (Vitest)
+```
+
 ## Disclaimer
+
+## Contributing
+
+Contributions welcome. Open an issue or submit a pull request. Please run `npm run lint` and `npm run test` before creating a PR.
+
+## Deployment
+
+This project is compatible with Vercel and other Next.js hosts. The live site is listed at the top of this file.
 
 For informational purposes only. Does not provide medical advice, diagnosis, or treatment recommendations, and cannot enroll patients in studies. Confirm eligibility with the oncology care team before pursuing any trial.
 
