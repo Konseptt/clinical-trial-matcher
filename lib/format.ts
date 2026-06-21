@@ -50,6 +50,18 @@ export function truncateTrialSummary(
   return `${truncated.slice(0, sliceEnd).trim()}...`;
 }
 
+/**
+ * Quote a value as a CSV cell and neutralize spreadsheet formula injection.
+ * Registry-sourced text (e.g. trial titles) is untrusted; a cell starting with
+ * =, +, -, @, tab, or CR is executed as a formula by Excel/Sheets, so prefix it
+ * with a single quote to force literal text.
+ */
+export function escapeCsvCell(value: string): string {
+  const s = String(value);
+  const guarded = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  return `"${guarded.replace(/"/g, '""')}"`;
+}
+
 export function formatTrialStatus(status: string): string {
   return status
     .replace(/_/g, " ")

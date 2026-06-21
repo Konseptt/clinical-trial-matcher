@@ -18,20 +18,17 @@ export default function AnalysisIntro({ mode }: { mode: AppMode }) {
 
   return (
     <section aria-labelledby="analysis-heading" className="lg:sticky lg:top-8">
-      <h2 id="analysis-heading" className="subsection-title mb-1">
-        Process overview
+      <h2 id="analysis-heading" className="subsection-title mb-4">
+        How it works
       </h2>
-      <p className="section-eyebrow mb-5">Four stages</p>
 
-      <ol className="timeline-rail" aria-label="Process overview">
+      <ol className="space-y-3" aria-label="Process overview">
         {steps.map((step, i) => (
-          <li key={step} className="timeline-step">
-            <span className="step-number" aria-hidden="true">
-              {i + 1}
+          <li key={step} className="flex gap-3 font-body text-base text-foreground/90">
+            <span className="text-faint tabular-nums shrink-0" aria-hidden="true">
+              {i + 1}.
             </span>
-            <span className="font-body text-base text-foreground/90 pt-0.5">
-              {step}
-            </span>
+            <span>{step}</span>
           </li>
         ))}
       </ol>

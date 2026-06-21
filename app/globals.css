@@ -49,9 +49,6 @@
     touch-action: manipulation;
     -webkit-tap-highlight-color: rgba(42, 74, 64, 0.1);
     background-color: var(--color-background);
-    background-image:
-      radial-gradient(ellipse 120% 80% at 100% 0%, rgba(168, 72, 47, 0.04), transparent 55%),
-      radial-gradient(ellipse 90% 60% at 0% 100%, rgba(42, 74, 64, 0.05), transparent 50%);
   }
 
   ::selection {
@@ -68,7 +65,7 @@
   }
 
   .page-wrap {
-    @apply w-full max-w-[76rem] mx-auto px-4 sm:px-6 lg:px-8;
+    @apply w-full max-w-[72rem] mx-auto px-4 sm:px-6 lg:px-8;
   }
 
   .section-label {
@@ -76,12 +73,12 @@
   }
 
   .section-title {
-    @apply font-display text-xl sm:text-2xl text-foreground text-pretty;
+    @apply font-display text-xl sm:text-2xl font-semibold text-foreground text-pretty;
     line-height: var(--leading-heading);
   }
 
   .subsection-title {
-    @apply font-display text-lg text-foreground text-pretty;
+    @apply font-display text-lg font-semibold text-foreground text-pretty;
     line-height: var(--leading-heading);
   }
 
@@ -100,38 +97,6 @@
 
   .divider {
     @apply border-t border-border-subtle;
-  }
-
-  .masthead-flourish {
-    @apply flex items-center gap-4 my-6;
-  }
-
-  .masthead-flourish::before,
-  .masthead-flourish::after {
-    content: "";
-    @apply flex-1 h-px bg-border;
-  }
-
-  .masthead-flourish span {
-    @apply w-1.5 h-1.5 rotate-45 bg-accent shrink-0;
-  }
-
-  .margin-rail {
-    @apply relative pl-6;
-  }
-
-  .margin-rail::before {
-    content: "";
-    @apply absolute left-0 top-1 bottom-1 w-0.5;
-    background: linear-gradient(
-      to bottom,
-      var(--color-accent),
-      color-mix(in srgb, var(--color-primary) 60%, transparent)
-    );
-  }
-
-  .aside-rail {
-    @apply relative pl-5 lg:border-l lg:border-border-subtle lg:pl-8;
   }
 
   .results-page {
@@ -159,35 +124,9 @@
     border-radius: 3px;
   }
 
+  /* Plain text input surface. No decorative accent bar. */
   .compose-pane {
-    @apply relative pl-5;
-  }
-
-  .compose-pane::before {
-    content: "";
-    @apply absolute left-0 top-0 bottom-0 w-1 bg-accent;
-    opacity: 0.55;
-  }
-
-  .timeline-rail {
-    @apply relative pl-8 space-y-0;
-  }
-
-  .timeline-rail::before {
-    content: "";
-    @apply absolute left-[0.55rem] top-3 bottom-3 w-px bg-border;
-  }
-
-  .timeline-step {
-    @apply relative flex items-start gap-4 py-4;
-  }
-
-  .timeline-step:last-child {
-    @apply pb-0;
-  }
-
-  .step-number {
-    @apply absolute -left-8 font-display text-xl text-accent leading-none w-6 text-right;
+    @apply border border-border bg-surface;
   }
 
   .mode-tab {
@@ -203,7 +142,7 @@
   .btn-primary {
     @apply inline-flex items-center justify-center min-h-11
       font-body text-base font-semibold text-on-primary cursor-pointer
-      bg-accent border-2 border-accent-dark px-7 py-2.5
+      bg-accent border border-accent px-7 py-2.5
       hover:bg-accent-dark hover:border-accent-dark
       active:bg-accent-dark
       disabled:opacity-40 disabled:cursor-not-allowed
@@ -224,7 +163,7 @@
   .btn-secondary {
     @apply inline-flex items-center justify-center min-h-11
       font-body text-sm font-semibold text-primary cursor-pointer
-      border-2 border-primary bg-surface px-6 py-2.5
+      border border-primary bg-surface px-6 py-2.5
       hover:bg-muted
       active:bg-muted-panel
       transition-colors duration-150
@@ -232,7 +171,7 @@
   }
 
   .notes-field {
-    @apply w-full bg-transparent border-0 px-0 py-4 font-body text-base text-foreground
+    @apply w-full bg-transparent border-0 px-4 py-3 font-body text-base text-foreground
       resize-y min-h-[220px]
       focus:outline-none focus:ring-0
       disabled:opacity-50 disabled:cursor-not-allowed;
@@ -240,8 +179,7 @@
   }
 
   .notes-field::placeholder {
-    color: color-mix(in srgb, var(--color-faint) 45%, transparent);
-    font-style: italic;
+    color: color-mix(in srgb, var(--color-faint) 55%, transparent);
   }
 
   .notes-field[aria-invalid="true"] {
@@ -254,13 +192,13 @@
 
   .trial-entry {
     @apply grid gap-x-5 gap-y-4 py-8;
-    grid-template-columns: 3rem 1fr;
+    grid-template-columns: 2rem 1fr;
     grid-template-rows: auto auto;
   }
 
   @media (min-width: 640px) {
     .trial-entry {
-      grid-template-columns: 3.5rem 1fr auto;
+      grid-template-columns: 2rem 1fr auto;
       grid-template-rows: auto;
     }
   }
@@ -270,7 +208,7 @@
   }
 
   .trial-index {
-    @apply font-display text-2xl text-border leading-none pt-1 tabular-nums;
+    @apply font-body text-sm font-medium text-faint-muted leading-none pt-1.5 tabular-nums;
   }
 
   .meta-strip {
@@ -278,7 +216,7 @@
   }
 
   .trial-title {
-    @apply font-display text-lg sm:text-xl text-foreground text-pretty;
+    @apply font-display text-lg sm:text-xl font-semibold text-foreground text-pretty;
     line-height: var(--leading-heading);
   }
 
@@ -287,29 +225,21 @@
     transition: opacity 200ms ease;
   }
 
+  /* Flat score badge: number + label, colored by tier. No SVG ring. */
   .score-ring {
-    @apply inline-flex flex-col items-center gap-1.5 cursor-pointer
-      border border-border-subtle bg-surface px-3 py-2.5 min-w-[5.5rem]
+    @apply inline-flex flex-col items-center justify-center gap-0.5 cursor-pointer
+      border border-border-subtle bg-surface px-4 py-2.5 min-w-[5.5rem]
       hover:border-border hover:bg-muted
       transition-colors duration-150
       focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
 
-  .score-ring-chart {
-    @apply relative w-[3.25rem] h-[3.25rem] shrink-0;
-  }
-
-  .score-ring svg {
-    @apply block w-full h-full;
-  }
-
-  .score-ring-value {
-    @apply absolute inset-0 flex items-center justify-center
-      font-display text-xl leading-none tabular-nums pointer-events-none;
+  .score-ring-num {
+    @apply font-display text-2xl font-semibold leading-none tabular-nums;
   }
 
   .score-ring-label {
-    @apply font-body text-sm text-faint text-center whitespace-nowrap leading-none;
+    @apply font-body text-xs text-faint text-center whitespace-nowrap leading-none;
   }
 
   .score-ring-high {
@@ -392,16 +322,12 @@
     animation: trial-fade 400ms ease-out both;
   }
 
-  .loading-step-active {
-    @apply relative flex items-start gap-4 py-4 font-body text-base text-foreground;
-  }
-
-  .loading-step-wait {
-    @apply relative flex items-start gap-4 py-4 font-body text-base text-faint-muted;
+  .loading-step {
+    @apply flex items-center gap-3 py-2 font-body text-base;
   }
 
   .loading-dot {
-    @apply absolute -left-8 w-2 h-2 rounded-full bg-accent mt-1.5;
+    @apply w-2 h-2 rounded-full bg-accent shrink-0;
     animation: pulse-dot 1.2s ease-in-out infinite;
   }
 
@@ -432,11 +358,11 @@
   }
 
   .modal-panel {
-    @apply bg-surface p-6 max-w-sm w-full space-y-4;
+    @apply bg-surface border border-border p-6 max-w-sm w-full space-y-4;
   }
 
   .modal-panel-wide {
-    @apply bg-surface p-6 max-w-4xl w-full space-y-6 max-h-[90vh] overflow-y-auto;
+    @apply bg-surface border border-border p-6 max-w-4xl w-full space-y-6 max-h-[90vh] overflow-y-auto;
   }
 
   .check-row {
@@ -449,7 +375,7 @@
   }
 
   .board-column-title {
-    @apply font-display text-sm text-foreground mb-4 pb-2 border-b-2 border-accent;
+    @apply font-display text-sm font-semibold text-foreground mb-4 pb-2 border-b border-border;
   }
 }
 

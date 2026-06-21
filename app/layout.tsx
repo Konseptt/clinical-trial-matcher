@@ -1,18 +1,19 @@
 import type { Metadata } from "next";
-import { Instrument_Serif, Figtree, Fira_Code } from "next/font/google";
+import { Figtree, Fira_Code, Fraunces } from "next/font/google";
 import "./globals.css";
-
-const instrument = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-instrument",
-  display: "swap",
-});
 
 const figtree = Figtree({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-figtree",
+  display: "swap",
+});
+
+// Display face: warm, optical-size serif. Distinct from the Figtree body.
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["400", "600"],
+  variable: "--font-fraunces",
   display: "swap",
 });
 
@@ -37,20 +38,14 @@ export const metadata: Metadata = {
 
 function Masthead() {
   return (
-    <header className="mb-10 w-full grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-12 items-start">
-      <div>
-        <p className="section-label mb-2">Clinical trial registry search</p>
-        <h1 className="text-3xl sm:text-4xl text-foreground text-pretty leading-snug">
-          Identify trials matched to{" "}
-          <em className="not-italic text-accent">clinical profile</em>
-        </h1>
-      </div>
-      <div className="lg:pt-8">
-        <p className="section-hint max-w-lg">
-          Enter diagnosis, treatment history, and location. The system queries
-          public registries and ranks open studies by estimated eligibility fit.
-        </p>
-      </div>
+    <header className="mb-10 w-full max-w-2xl">
+      <h1 className="font-display text-3xl sm:text-4xl font-semibold text-foreground text-pretty leading-tight">
+        Clinical Trial Matcher
+      </h1>
+      <p className="section-hint mt-2">
+        Enter diagnosis, treatment history, and location. The system queries
+        public registries and ranks open studies by estimated eligibility fit.
+      </p>
     </header>
   );
 }
@@ -63,7 +58,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${instrument.variable} ${figtree.variable} ${firaCode.variable}`}
+      className={`${figtree.variable} ${fraunces.variable} ${firaCode.variable}`}
     >
       <body>
         <a href="#main" className="skip-link">

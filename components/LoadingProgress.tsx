@@ -16,7 +16,7 @@ export default function LoadingProgress({ mode = "doctor" }: { mode?: AppMode })
 
   return (
     <div
-      className="mt-10 max-w-md margin-rail"
+      className="mt-10 max-w-md"
       role="status"
       aria-live="polite"
       aria-busy="true"
@@ -25,22 +25,22 @@ export default function LoadingProgress({ mode = "doctor" }: { mode?: AppMode })
       <h2 className="section-title mb-2">
         Searching registries
       </h2>
-      <p className="section-hint mb-10">
+      <p className="section-hint mb-8">
         This typically completes within a few seconds across multiple data sources.
       </p>
 
-      <ol className="timeline-rail" aria-label="Search progress">
+      <ol aria-label="Search progress">
         {steps.map((label, i) => (
           <li
             key={label}
-            className={i === 0 ? "loading-step-active" : "loading-step-wait"}
+            className={`loading-step ${i === 0 ? "text-foreground" : "text-faint-muted"}`}
             aria-current={i === 0 ? "step" : undefined}
           >
             {i === 0 ? (
               <span className="loading-dot" aria-hidden="true" />
             ) : (
               <span
-                className="absolute -left-8 w-1.5 h-1.5 rounded-full bg-border mt-2"
+                className="w-1.5 h-1.5 rounded-full bg-border shrink-0"
                 aria-hidden="true"
               />
             )}

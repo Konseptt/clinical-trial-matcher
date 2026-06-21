@@ -20,6 +20,8 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    // Param/prop-driven seeding plus client-only storage hydration on mount.
+    /* eslint-disable react-hooks/set-state-in-effect */
     const isDoctorSample = searchParams.get("sample") === "1";
     const isPatientSample = searchParams.get("sample") === "patient";
 
@@ -50,6 +52,7 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
     } catch (e) {
       console.error("Failed to load saved data:", e);
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [searchParams, mode]);
 
   const handleSubmit = (e: React.FormEvent) => {

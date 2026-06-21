@@ -14,7 +14,14 @@ export function normalizePhase(phases?: string[]): string {
   if (!phases || phases.length === 0) return "Not specified";
   return phases
     .map((p) => {
-      const num = p.replace(/PHASE/i, "").trim();
+      // ClinicalTrials.gov v2 enum: PHASE1..PHASE4, EARLY_PHASE1, NA.
+      const key = p.toUpperCase().trim();
+      if (key === "NA") return "Not Applicable";
+      if (key === "EARLY_PHASE1") return "Early Phase 1";
+      const m = key.match(/^PHASE(\d)$/);
+      if (m) return `Phase ${m[1]}`;
+      // Unknown token: prettify rather than emit "Phase <garbage>".
+      const num = key.replace(/PHASE/g, "").replace(/_/g, " ").trim();
       return num ? `Phase ${num}` : p;
     })
     .join(", ");
@@ -83,7 +90,9 @@ export async function queryClinicalTrialsGov(
       .slice(0, 2);
 
     if (biomarkerTerms.length > 0) {
-      searchParams.set("query.term", biomarkerTerms[0]);
+      // Join with OR (Essie syntax) so the second biomarker isn't dropped;
+      // the slice(0, 2) intended to search both, not just the first.
+      searchParams.set("query.term", biomarkerTerms.join(" OR "));
     }
   }
 

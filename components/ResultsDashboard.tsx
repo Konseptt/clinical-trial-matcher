@@ -6,6 +6,7 @@ import {
 } from "@/app/actions/match";
 import { queryWhoIctrpFromBrowser } from "@/lib/registries/who-ictrp-client";
 import {
+  escapeCsvCell,
   formatTrialStatus,
   normalizeTrialSummary,
   stripEmDashes,
@@ -43,9 +44,6 @@ function scoreRingClass(score: number): string {
   return "score-ring-low";
 }
 
-const SCORE_RING_R = 18;
-const SCORE_RING_C = 2 * Math.PI * SCORE_RING_R;
-
 function ScoreRing({
   score,
   label,
@@ -57,8 +55,6 @@ function ScoreRing({
   expanded: boolean;
   onClick: () => void;
 }) {
-  const dash = (score / 100) * SCORE_RING_C;
-
   return (
     <button
       type="button"
@@ -67,32 +63,9 @@ function ScoreRing({
       aria-label={`Match score: ${score}%. ${label}. Click to view breakdown.`}
       aria-expanded={expanded}
     >
-      <div className="score-ring-chart">
-        <svg viewBox="0 0 44 44" className="-rotate-90" aria-hidden="true">
-          <circle
-            cx="22"
-            cy="22"
-            r={SCORE_RING_R}
-            fill="none"
-            stroke="currentColor"
-            strokeOpacity={0.18}
-            strokeWidth="2"
-          />
-          <circle
-            cx="22"
-            cy="22"
-            r={SCORE_RING_R}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeDasharray={`${dash} ${SCORE_RING_C}`}
-            strokeLinecap="butt"
-          />
-        </svg>
-        <span className="score-ring-value" aria-hidden="true">
-          {score}
-        </span>
-      </div>
+      <span className="score-ring-num" aria-hidden="true">
+        {score}
+      </span>
       <span className="score-ring-label">{label}</span>
     </button>
   );
@@ -209,6 +182,8 @@ function ProfileSummary({
   const [editedInterests, setEditedInterests] = useState<string[]>(profile.interests);
 
   useEffect(() => {
+    // Sync editable form state when the source profile prop changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditedAge(profile.age ?? "");
     setEditedSex(profile.sex);
     setEditedDiagnosis(profile.primaryDiagnosis);
@@ -623,9 +598,9 @@ function registryStatusMessage(
   if (summary.trialCount > 0) {
     return {
       tone: "success",
-      text: `Found ${summary.trialCount} ${
+      text: `${summary.trialCount} ${
         summary.trialCount === 1 ? "study" : "studies"
-      } potentially eligible`,
+      } identified (eligibility not yet assessed)`,
     };
   }
 
@@ -1147,6 +1122,8 @@ function ProfileSelector({
     const loaded = localStorage.getItem("saved_profiles");
     if (loaded) {
       try {
+        // Client-only localStorage hydration on mount.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setProfiles(JSON.parse(loaded));
       } catch (e) {
         console.error("Failed to load saved profiles:", e);
@@ -1341,6 +1318,8 @@ export default function ResultsDashboard({
   const [lastSearchDate, setLastSearchDate] = useState<string | null>(null);
 
   useEffect(() => {
+    // Reset view state when a new search result (data prop) arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDisplayData(data);
     setWhoSearchState("idle");
     whoSearchStartedRef.current = false;
@@ -1417,8 +1396,11 @@ export default function ResultsDashboard({
     if (prev) {
       const newIds = currentIds.filter(id => !prev.trialIds.includes(id));
       if (newIds.length > 0) {
+        // Derived from client-only localStorage comparison on mount.
+        /* eslint-disable react-hooks/set-state-in-effect */
         setNewMatchesCount(newIds.length);
         setLastSearchDate(new Date(prev.timestamp).toLocaleDateString());
+        /* eslint-enable react-hooks/set-state-in-effect */
       }
     }
 
@@ -1434,6 +1416,8 @@ export default function ResultsDashboard({
     const saved = localStorage.getItem("saved_clinical_trials");
     if (saved) {
       try {
+        // Client-only localStorage hydration on mount.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSavedTrials(JSON.parse(saved));
       } catch (err) {
         console.error("Failed to parse saved trials:", err);
@@ -1483,7 +1467,6 @@ export default function ResultsDashboard({
 
   const handleExportCSV = () => {
     const headers = ["Title", "Registry", "TrialID", "Status", "Phase", "MatchScore", "BoardStatus"];
-    const csvCell = (value: string) => `"${String(value).replace(/"/g, '""')}"`;
     const rows = savedTrials.map((item) => [
       item.trial.title,
       item.trial.registry,
@@ -1492,8 +1475,8 @@ export default function ResultsDashboard({
       item.trial.phase,
       `${item.trial.matchScore}%`,
       item.boardStatus,
-    ].map(csvCell));
-    const csvContent = [headers.map(csvCell).join(","), ...rows.map((r) => r.join(","))].join("\n");
+    ].map(escapeCsvCell));
+    const csvContent = [headers.map(escapeCsvCell).join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1556,7 +1539,7 @@ export default function ResultsDashboard({
       </div>
 
       <div className="results-body">
-        <aside className="lg:col-span-4 aside-rail results-sidebar space-y-6 order-1">
+        <aside className="lg:col-span-4 results-sidebar space-y-6 order-1">
           <ProfileSummary profile={profile} onUpdate={onProfileUpdate} />
           <RegistryStatus
             summaries={displayData.registrySummaries}

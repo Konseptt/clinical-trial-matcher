@@ -183,6 +183,27 @@ const LOCAL_GEOCODE_DB: Record<string, { lat: number; lon: number }> = {
 
 const geocodeCache: Record<string, { lat: number; lon: number }> = {};
 
+// Coalesce concurrent lookups for the same place. scoreTrial runs for every
+// trial via Promise.all, so without this every trial fires an identical patient
+// geocode at once (thundering herd) before the cache fills.
+const inFlight = new Map<string, Promise<{ lat: number; lon: number } | null>>();
+
+// Nominatim's usage policy caps clients at ~1 request/second. Chain network
+// calls through this gate so bursts of distinct sites stay under the limit and
+// avoid a 429/ban.
+const NOMINATIM_MIN_INTERVAL_MS = 1100;
+let nominatimGate: Promise<void> = Promise.resolve();
+
+function throttledNominatim<T>(task: () => Promise<T>): Promise<T> {
+  const run = nominatimGate.then(task);
+  // Advance the gate by the min interval regardless of task success/failure.
+  nominatimGate = run.then(
+    () => new Promise((r) => setTimeout(r, NOMINATIM_MIN_INTERVAL_MS)),
+    () => new Promise((r) => setTimeout(r, NOMINATIM_MIN_INTERVAL_MS))
+  );
+  return run;
+}
+
 export async function geocodeLocation(
   city: string | null,
   state: string | null,
@@ -207,34 +228,44 @@ export async function geocodeLocation(
     return LOCAL_GEOCODE_DB[city.toLowerCase()];
   }
 
-  // 3. Online fetch fallback (Nominatim)
-  try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
-      {
-        headers: {
-          "User-Agent": "ClinicalTrialMatcher/1.0 (contact: medical-trial-matching)",
-        },
-        next: { revalidate: 86400 }, // Cache on server side
-      }
-    );
+  // Reuse an outstanding network lookup for the same place.
+  const pending = inFlight.get(cacheKey);
+  if (pending) return pending;
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data && data[0]) {
-        const coords = {
-          lat: parseFloat(data[0].lat),
-          lon: parseFloat(data[0].lon),
-        };
-        geocodeCache[cacheKey] = coords;
-        return coords;
+  // 3. Online fetch fallback (Nominatim), throttled and coalesced.
+  const lookup = throttledNominatim(async () => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+        {
+          headers: {
+            "User-Agent": "ClinicalTrialMatcher/1.0 (contact: medical-trial-matching)",
+          },
+          next: { revalidate: 86400 }, // Cache on server side
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data[0]) {
+          const coords = {
+            lat: parseFloat(data[0].lat),
+            lon: parseFloat(data[0].lon),
+          };
+          geocodeCache[cacheKey] = coords;
+          return coords;
+        }
       }
+    } catch (err) {
+      console.error("Geocoding service fetch failed:", err);
     }
-  } catch (err) {
-    console.error("Geocoding service fetch failed:", err);
-  }
+    return null;
+  }).finally(() => {
+    inFlight.delete(cacheKey);
+  });
 
-  return null;
+  inFlight.set(cacheKey, lookup);
+  return lookup;
 }
 
 export function calculateDistance(

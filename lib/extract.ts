@@ -83,7 +83,6 @@ function normalizeBiomarkers(rawText: string): string[] {
     "alk",
     "braf",
     "kras",
-    "pdl1",
     "pd-l1",
     "msi-high",
     "brca1",

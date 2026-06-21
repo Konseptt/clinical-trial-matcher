@@ -48,12 +48,15 @@ export function parsePhaseRank(phase: string): number {
   // Phase strings arrive in both roman ("Phase II") and arabic ("Phase 2")
   // form depending on the registry. Normalize roman numerals to digits, then
   // take the highest phase number mentioned (handles combos like "1/2", "2/3").
+  // Allow an A/B/C sub-phase suffix ("IIb", "IIIa"): the bare \bII\b boundary
+  // failed on the trailing letter, so "Phase IIb" scored 0 and eligible
+  // phase-2 trials got dropped by the phase-two-plus filter.
   const normalized = phase
     .toUpperCase()
-    .replace(/\bIV\b/g, "4")
-    .replace(/\bIII\b/g, "3")
-    .replace(/\bII\b/g, "2")
-    .replace(/\bI\b/g, "1");
+    .replace(/\bIV[ABC]?\b/g, "4")
+    .replace(/\bIII[ABC]?\b/g, "3")
+    .replace(/\bII[ABC]?\b/g, "2")
+    .replace(/\bI[ABC]?\b/g, "1");
 
   const nums = normalized.match(/(?<![0-9])[0-4](?![0-9])/g);
   if (nums && nums.length > 0) {

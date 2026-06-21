@@ -27,6 +27,8 @@ export default function ResultsPage() {
     }
 
     const storedMode = normalizeAppMode(sessionStorage.getItem(MODE_STORAGE_KEY));
+    // Client-only sessionStorage read on mount; cannot run during SSR render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMode(storedMode);
 
     startTransition(async () => {

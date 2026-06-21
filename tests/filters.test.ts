@@ -43,6 +43,12 @@ describe("parsePhaseRank", () => {
     expect(parsePhaseRank("Phase II/III")).toBe(3);
     expect(parsePhaseRank("Phase 1/2")).toBe(2);
   });
+  it("handles roman sub-phase suffixes (IIa/IIb/IIIa)", () => {
+    expect(parsePhaseRank("Phase IIb")).toBe(2);
+    expect(parsePhaseRank("Phase IIa")).toBe(2);
+    expect(parsePhaseRank("Phase IIIa")).toBe(3);
+    expect(isPhaseTwoOrAbove("Phase IIb")).toBe(true);
+  });
   it("returns 0 for unknown", () => {
     expect(parsePhaseRank("Not specified")).toBe(0);
     expect(parsePhaseRank("")).toBe(0);

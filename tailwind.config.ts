@@ -33,7 +33,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        display: ["var(--font-instrument)", "Georgia", "serif"],
+        display: ["var(--font-fraunces)", "Georgia", "serif"],
         body: ["var(--font-figtree)", "system-ui", "sans-serif"],
         mono: ["var(--font-fira-code)", "Courier New", "monospace"],
       },

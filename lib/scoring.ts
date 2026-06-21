@@ -102,9 +102,15 @@ export function evaluateBiomarkerGates(
   const gates: BiomarkerGate[] = [];
 
   const hasMarker = (markerName: string, expectedPos: boolean = true) => {
+    const name = markerName.toLowerCase();
+    // Match marker as a whole token, not a substring. "er" lives inside "her2",
+    // so a plain includes() lets an ER gate cross-contaminate with HER2 status
+    // (e.g. "HER2 negative" wrongly satisfying ER-negative). Criterion isolation
+    // is required: no cross-contamination between distinct markers.
+    const tokenRe = new RegExp(`(^|[^a-z0-9])${escapeRegExp(name)}([^a-z0-9]|$)`, "i");
     return profile.biomarkers.some(m => {
       const ml = m.toLowerCase();
-      if (!ml.includes(markerName.toLowerCase())) return false;
+      if (!tokenRe.test(ml)) return false;
       const isNeg = ml.includes("neg") || ml.includes("wt") || ml.includes("wild");
       return expectedPos ? !isNeg : isNeg;
     });
@@ -194,7 +200,7 @@ export function evaluateBiomarkerGates(
   return gates;
 }
 
-function hasContradictoryBiomarkers(
+export function hasContradictoryBiomarkers(
   combined: string,
   profile: PatientProfile
 ): number {
@@ -206,11 +212,14 @@ function hasContradictoryBiomarkers(
   const isHer2Negative = profile.biomarkers.some((m) =>
     /her2\s*negative/i.test(m)
   );
+  // (?<![a-z]) keeps a bare "er" from matching inside "her2", "cancer", etc.
+  // Without it an ER gate cross-contaminates with HER2/diagnosis text and
+  // produces false contradiction penalties that distort ranking.
   const isErNegative = profile.biomarkers.some((m) =>
-    /er\s*negative/i.test(m)
+    /(?<![a-z])er\s*negative/i.test(m)
   );
   const isErPositive = profile.biomarkers.some((m) =>
-    /er\s*positive/i.test(m)
+    /(?<![a-z])er\s*positive/i.test(m)
   );
 
   if (isHer2Positive && /her2[\s\-]*negative|her2\-|her2\s*neg/i.test(combined)) {
@@ -219,10 +228,10 @@ function hasContradictoryBiomarkers(
   if (isHer2Negative && /her2[\s\-]*positive|her2\+|her2\s*pos/i.test(combined)) {
     penalty += 30;
   }
-  if (isErNegative && /er[\s\-]*positive|er\+|estrogen receptor[\s\-]*positive/i.test(combined)) {
+  if (isErNegative && /(?<![a-z])er[\s\-]*positive|(?<![a-z])er\+|estrogen receptor[\s\-]*positive/i.test(combined)) {
     penalty += 20;
   }
-  if (isErPositive && /er[\s\-]*negative|er\-|estrogen receptor[\s\-]*negative/i.test(combined)) {
+  if (isErPositive && /(?<![a-z])er[\s\-]*negative|(?<![a-z])er\-|estrogen receptor[\s\-]*negative/i.test(combined)) {
     penalty += 20;
   }
   if (isHer2Positive && /triple[\s-]negative|tnbc/i.test(combined)) {
@@ -230,6 +239,50 @@ function hasContradictoryBiomarkers(
   }
 
   return penalty;
+}
+
+/**
+ * Penalize biomarker gates the patient *definitively* fails. A gate rule is
+ * "mismatched" both when the patient explicitly has the opposite polarity AND
+ * when the marker is simply absent (status unknown). Only the former is a true
+ * eligibility contradiction; penalizing unknowns would demote possibly-eligible
+ * trials. Without this a hard inclusion gate the patient fails (e.g. HER2+
+ * patient vs a triple-negative trial) could still surface as a strong match —
+ * a false-positive eligibility signal.
+ */
+export function biomarkerGatePenalty(
+  gates: BiomarkerGate[],
+  profile: PatientProfile
+): number {
+  const explicitOpposite = (
+    marker: string,
+    expected: "positive" | "negative"
+  ): boolean => {
+    const tokenRe = new RegExp(
+      `(^|[^a-z0-9])${escapeRegExp(marker.toLowerCase())}([^a-z0-9]|$)`,
+      "i"
+    );
+    return profile.biomarkers.some((m) => {
+      const ml = m.toLowerCase();
+      if (!tokenRe.test(ml)) return false;
+      const isNeg = ml.includes("neg") || ml.includes("wt") || ml.includes("wild");
+      const patientPolarity = isNeg ? "negative" : "positive";
+      return patientPolarity !== expected;
+    });
+  };
+
+  let penalty = 0;
+  for (const gate of gates) {
+    if (gate.passed) continue;
+    const contradicted = gate.rules.some(
+      (r) =>
+        r.status === "mismatched" &&
+        (r.expected === "positive" || r.expected === "negative") &&
+        explicitOpposite(r.marker, r.expected)
+    );
+    if (contradicted) penalty += 15;
+  }
+  return Math.min(penalty, 30);
 }
 
 function hasContradictoryStageContext(
@@ -379,6 +432,11 @@ async function scoreTrial(
         else if (distance <= 150) locationMatch = 8;
         else if (distance <= 500) locationMatch = 4;
         else locationMatch = 0;
+      } else if (matchesLocation(trial, profile.location)) {
+        // No site geocoded (DB miss + Nominatim failure). Don't silently score
+        // as no-match: fall back to country/state text match so a same-country
+        // trial still gets location credit.
+        locationMatch = 12;
       }
     } else {
       if (matchesLocation(trial, profile.location)) {
@@ -421,7 +479,9 @@ async function scoreTrial(
   }
 
   // 11. Penalties
-  const biomarkerPenalties = hasContradictoryBiomarkers(combined, profile);
+  const biomarkerPenalties =
+    hasContradictoryBiomarkers(combined, profile) +
+    biomarkerGatePenalty(biomarkerGates, profile);
   const stagePenalties = hasContradictoryStageContext(combined, profile);
 
   const rawTotal = 
