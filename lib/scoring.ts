@@ -343,7 +343,11 @@ async function scoreTrial(
   let biomarkerMatchRaw = 0;
   for (const marker of profile.biomarkers) {
     const markerLower = marker.toLowerCase();
-    if (combined.includes(markerLower)) {
+    // "er"/"pr" are substrings of "cancer", "her2", etc., so a plain includes()
+    // credited a same-token trial regardless of polarity ("cancer positive"
+    // matching "ER positive"). Defer those to the boundary-aware branches below.
+    const isShortReceptor = /^(?:er|pr)\b/.test(markerLower);
+    if (!isShortReceptor && combined.includes(markerLower)) {
       biomarkerMatchRaw += 10;
     } else if (markerLower.includes("positive")) {
       const base = escapeRegExp(markerLower.replace(/\s*positive/, "").trim());

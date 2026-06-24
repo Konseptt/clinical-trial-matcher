@@ -2,16 +2,33 @@
 
 Search international clinical trial registries using patient clinical information. Supports patient narrative input and clinician chart notes, with ranked results from multiple public databases.
 
+Unlike other matchers that only tell you what fits *today*, this one also forecasts **when** you could become eligible (see [Eligibility Forecast](#eligibility-forecast-the-unique-part)).
+
 **Live:** https://clinicaltrial.ranjansharma.info.np/
 
 ## Features
 
+- **Eligibility Forecast (unique):** A forward-looking readiness timeline. Each trial is labelled `Ready now`, `Eligible ~<date>`, `Action needed`, `Opens later`, or `Likely ineligible`, with the specific blockers and next steps. Projected eligibility dates can be exported as calendar reminders (`.ics`).
 - **Patient mode:** Narrative clinical summary with structured extraction (requires NVIDIA API key)
 - **Clinician mode:** Rule-based extraction from chart notes
 - **Registries:** ClinicalTrials.gov, EU-CTR, WHO ICTRP, ISRCTN
 - **Scoring:** Diagnosis, biomarker, stage, location, and treatment-history weighting
+- **Sort & filter:** Order results by best match, readiness, phase, or proximity; filter by readiness status
 - **Shortlist:** Save trials and track recruitment status locally
 - **Consultation guide:** Printable summary for oncology visits
+
+## Eligibility Forecast (the unique part)
+
+Most trial matchers answer "which trials match me today?". This app also answers the question patients actually care about: **"When do I become eligible, and what is blocking me right now?"**
+
+Many trials require a *washout period* (a gap after a prior therapy) before enrollment. The matcher reads those requirements from the registry eligibility text, combines them with the patient's own treatment timeline, and:
+
+1. Classifies each trial's readiness (`Ready now`, `Eligible ~<date>`, `Action needed`, `Opens later`, `Likely ineligible`).
+2. Projects the earliest date time-based criteria are expected to clear.
+3. Lists concrete blockers (e.g. "Trastuzumab washout (90 days) not yet met") and next steps (e.g. "Add an end date for radiation to confirm the 28-day washout").
+4. Exports projected eligibility dates as an `.ics` calendar file (with a 7-day advance reminder) so a re-check is never missed.
+
+It is derived entirely from signals already computed during scoring, runs fully client-side, and adds no new data sources. It organizes registry-stated requirements into a personal readiness view; it is **not** medical advice and does not assess true eligibility.
 
 ## Requirements
 
@@ -88,6 +105,9 @@ flowchart TD
 
   N --> Q[Edit profile or shortlist trials]
   Q --> R[Optional patient summary via NVIDIA]
+
+  N --> S[Eligibility forecast and readiness timeline]
+  S --> T[Export calendar reminders .ics]
 ```
 
 1. Clinical input is parsed into a structured patient profile
@@ -106,12 +126,14 @@ app/
   results/            Results page
 components/           UI
 lib/
-  extract.ts          Rule-based profile extraction
-  extract-ai.ts       Patient-mode NVIDIA extraction
-  match.ts            Search pipeline
-  scoring.ts          Match scoring
-  registries/         Registry connectors
-  simplify-trial.ts   Patient-facing trial summaries
+  extract.ts               Rule-based profile extraction
+  extract-ai.ts            Patient-mode NVIDIA extraction
+  match.ts                 Search pipeline
+  scoring.ts               Match scoring
+  eligibility-forecast.ts  Readiness classification + eligibility-date projection
+  ics.ts                   Calendar reminder (.ics) export
+  registries/              Registry connectors
+  simplify-trial.ts        Patient-facing trial summaries
 ```
 
 ## Local storage
@@ -132,7 +154,7 @@ Run the linter:
 npm run lint
 ```
 
-Tests are under the `tests/` directory and cover extraction, registry connectors, and scoring logic.
+Tests are under the `tests/` directory and cover extraction, registry connectors, scoring logic, the eligibility forecast, and calendar export.
 
 ## Scripts
 
@@ -151,6 +173,8 @@ npm run test     # Run unit tests (Vitest)
 
 ## Disclaimer
 
+For informational purposes only. This tool does not provide medical advice, diagnosis, or treatment recommendations, and cannot enroll patients in studies. Match scores and eligibility forecasts are algorithmic estimates; confirm eligibility with the oncology care team before pursuing any trial.
+
 ## Contributing
 
 Contributions welcome. Open an issue or submit a pull request. Please run `npm run lint` and `npm run test` before creating a PR.
@@ -158,8 +182,6 @@ Contributions welcome. Open an issue or submit a pull request. Please run `npm r
 ## Deployment
 
 This project is compatible with Vercel and other Next.js hosts. The live site is listed at the top of this file.
-
-For informational purposes only. Does not provide medical advice, diagnosis, or treatment recommendations, and cannot enroll patients in studies. Confirm eligibility with the oncology care team before pursuing any trial.
 
 ## License
 

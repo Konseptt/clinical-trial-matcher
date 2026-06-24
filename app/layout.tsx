@@ -43,8 +43,9 @@ function Masthead() {
         Clinical Trial Matcher
       </h1>
       <p className="section-hint mt-2">
-        Enter diagnosis, treatment history, and location. The system queries
-        public registries and ranks open studies by estimated eligibility fit.
+        Enter diagnosis, treatment history, and location. The system searches
+        public registries, ranks open studies by estimated eligibility fit, and
+        forecasts when you could become eligible.
       </p>
     </header>
   );

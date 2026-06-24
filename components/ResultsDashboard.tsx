@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { useState, useEffect, useTransition, useRef } from "react";
+import { useState, useEffect, useMemo, useTransition, useRef } from "react";
 import {
   getSimplifiedSummaryAction,
   integrateWhoTrialsAction,
@@ -14,6 +14,15 @@ import {
   TRIAL_SUMMARY_DISPLAY_MAX,
 } from "@/lib/format";
 import { formatLocationDisplay } from "@/lib/location";
+import { parsePhaseRank } from "@/lib/registries/filters";
+import {
+  forecastTrialEligibility,
+  formatForecastDate,
+  summarizeForecasts,
+  type EligibilityForecast,
+  type ReadinessStatus,
+} from "@/lib/eligibility-forecast";
+import { buildIcsCalendar, type CalendarEvent } from "@/lib/ics";
 import type {
   MatchResponse,
   PatientProfile,
@@ -22,6 +31,66 @@ import type {
   TreatmentHistory,
   SimplifiedTrialGuide,
 } from "@/lib/types";
+
+const READINESS_RANK: Record<ReadinessStatus, number> = {
+  ready: 0,
+  upcoming: 1,
+  "action-needed": 2,
+  "opens-later": 3,
+  "likely-ineligible": 4,
+};
+
+const READINESS_FILTERS: Array<{ key: "all" | ReadinessStatus; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "ready", label: "Ready now" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "action-needed", label: "Action needed" },
+  { key: "opens-later", label: "Opens later" },
+  { key: "likely-ineligible", label: "Re-check" },
+];
+
+function readinessChipClass(status: ReadinessStatus): string {
+  switch (status) {
+    case "ready":
+      return "readiness-ready";
+    case "upcoming":
+      return "readiness-upcoming";
+    case "action-needed":
+      return "readiness-action";
+    case "opens-later":
+      return "readiness-later";
+    case "likely-ineligible":
+      return "readiness-ineligible";
+  }
+}
+
+function triggerDownload(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function buildReminderEvent(
+  trial: MatchedTrial,
+  forecast: EligibilityForecast
+): CalendarEvent | null {
+  if (forecast.status !== "upcoming" || !forecast.earliestDate) return null;
+  return {
+    uid: `${trial.registry}-${trial.trialId}@clinical-trial-matcher`,
+    date: forecast.earliestDate,
+    title: `Re-check trial eligibility: ${trial.title.slice(0, 80)}`,
+    description: `A treatment washout window is projected to clear around ${formatForecastDate(
+      forecast.earliestDate
+    )}, which may open this study to you. Confirm eligibility with the study team.\nTrial ${trial.trialId} (${trial.registry}).`,
+    url: trial.url,
+  };
+}
 
 interface ResultsDashboardProps {
   data: MatchResponse;
@@ -790,15 +859,19 @@ function SimplifiedTrialGuideView({
 function TrialCard({
   trial,
   profile,
+  forecast,
   index,
   isSaved,
   onSaveToggle,
+  onAddReminder,
 }: {
   trial: MatchedTrial;
   profile: PatientProfile;
+  forecast: EligibilityForecast;
   index: number;
   isSaved: boolean;
   onSaveToggle: () => void;
+  onAddReminder: (trial: MatchedTrial, forecast: EligibilityForecast) => void;
 }) {
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [simplifiedGuide, setSimplifiedGuide] = useState<SimplifiedTrialGuide | null>(null);
@@ -850,16 +923,25 @@ function TrialCard({
         </span>
 
         <div className="min-w-0 space-y-3">
-          <p className="meta-strip">
-            {[
-              trial.registry,
-              formatTrialStatus(trial.status),
-              trial.phase !== "Not specified" ? trial.phase : null,
-              trial.distance !== null ? `${trial.distance} mi` : null,
-            ]
-              .filter(Boolean)
-              .join(", ")}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span
+              className={`readiness-chip ${readinessChipClass(forecast.status)}`}
+              title={forecast.summary}
+            >
+              <span className="readiness-dot" aria-hidden="true" />
+              {forecast.label}
+            </span>
+            <p className="meta-strip">
+              {[
+                trial.registry,
+                formatTrialStatus(trial.status),
+                trial.phase !== "Not specified" ? trial.phase : null,
+                trial.distance !== null ? `${trial.distance} mi` : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}
+            </p>
+          </div>
 
           <h3
             id={`trial-title-${trial.trialId}`}
@@ -985,6 +1067,53 @@ function TrialCard({
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {(forecast.blockers.length > 0 || forecast.actions.length > 0) && (
+              <div className="mt-5 text-xs space-y-2">
+                <p className="guide-heading">Eligibility forecast</p>
+                {forecast.status === "upcoming" && forecast.earliestDate && (
+                  <p className="text-sm text-foreground font-body">
+                    Projected eligible around{" "}
+                    <span className="font-semibold">
+                      {formatForecastDate(forecast.earliestDate)}
+                    </span>{" "}
+                    as a treatment washout window clears.
+                  </p>
+                )}
+                {forecast.blockers.length > 0 && (
+                  <ul className="space-y-1 text-faint">
+                    {forecast.blockers.map((b, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span aria-hidden="true">-</span>
+                        <span>{b}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {forecast.actions.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-foreground font-medium">Next steps</p>
+                    <ul className="space-y-1 text-faint">
+                      {forecast.actions.map((a, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span aria-hidden="true">-</span>
+                          <span>{a}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {forecast.status === "upcoming" && forecast.earliestDate && (
+                  <button
+                    type="button"
+                    onClick={() => onAddReminder(trial, forecast)}
+                    className="btn-ghost text-xs mt-1"
+                  >
+                    Add calendar reminder
+                  </button>
+                )}
               </div>
             )}
         </div>
@@ -1316,6 +1445,85 @@ export default function ResultsDashboard({
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [newMatchesCount, setNewMatchesCount] = useState(0);
   const [lastSearchDate, setLastSearchDate] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"match" | "readiness" | "phase" | "distance">("match");
+  const [readinessFilter, setReadinessFilter] = useState<"all" | ReadinessStatus>("all");
+
+  const forecasts = useMemo(() => {
+    const map = new Map<string, EligibilityForecast>();
+    for (const t of trials) map.set(t.trialId, forecastTrialEligibility(t, profile));
+    return map;
+  }, [trials, profile]);
+
+  const forecastTotals = useMemo(
+    () => summarizeForecasts(Array.from(forecasts.values())),
+    [forecasts]
+  );
+
+  const countForReadiness = (key: "all" | ReadinessStatus): number => {
+    switch (key) {
+      case "all":
+        return trials.length;
+      case "ready":
+        return forecastTotals.ready;
+      case "upcoming":
+        return forecastTotals.upcoming;
+      case "action-needed":
+        return forecastTotals.actionNeeded;
+      case "opens-later":
+        return forecastTotals.opensLater;
+      case "likely-ineligible":
+        return forecastTotals.likelyIneligible;
+    }
+  };
+
+  const visibleTrials = useMemo(() => {
+    const filtered =
+      readinessFilter === "all"
+        ? trials
+        : trials.filter((t) => forecasts.get(t.trialId)?.status === readinessFilter);
+
+    // "Best match" keeps the server ranking (phase II+ first, then score).
+    if (sortBy === "match") return filtered;
+
+    const rankOf = (t: MatchedTrial) =>
+      READINESS_RANK[forecasts.get(t.trialId)?.status ?? "ready"];
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "readiness")
+        return rankOf(a) - rankOf(b) || b.matchScore - a.matchScore;
+      if (sortBy === "phase")
+        return parsePhaseRank(b.phase) - parsePhaseRank(a.phase) || b.matchScore - a.matchScore;
+      // "distance": closest first, trials without a distance sink to the bottom.
+      const da = a.distance ?? Number.POSITIVE_INFINITY;
+      const db = b.distance ?? Number.POSITIVE_INFINITY;
+      return da - db || b.matchScore - a.matchScore;
+    });
+  }, [trials, forecasts, sortBy, readinessFilter]);
+
+  const handleAddReminder = (trial: MatchedTrial, forecast: EligibilityForecast) => {
+    const event = buildReminderEvent(trial, forecast);
+    if (!event) return;
+    triggerDownload(
+      buildIcsCalendar([event], { calendarName: "Trial eligibility reminder" }),
+      `eligibility-${trial.trialId}.ics`,
+      "text/calendar;charset=utf-8"
+    );
+  };
+
+  const handleExportAllReminders = () => {
+    const events: CalendarEvent[] = [];
+    for (const t of trials) {
+      const forecast = forecasts.get(t.trialId);
+      const event = forecast ? buildReminderEvent(t, forecast) : null;
+      if (event) events.push(event);
+    }
+    if (events.length === 0) return;
+    triggerDownload(
+      buildIcsCalendar(events, { calendarName: "Trial eligibility reminders" }),
+      "trial-eligibility-reminders.ics",
+      "text/calendar;charset=utf-8"
+    );
+  };
 
   useEffect(() => {
     // Reset view state when a new search result (data prop) arrives.
@@ -1545,8 +1753,13 @@ export default function ResultsDashboard({
             summaries={displayData.registrySummaries}
             whoSearchState={whoSearchState}
           />
-          <BiomarkerBooster profile={profile} onUpdate={onProfileUpdate} />
-          <ProfileSelector currentProfile={profile} onSelectProfile={onProfileUpdate} />
+          <details className="tools-disclosure">
+            <summary>Refine &amp; tools</summary>
+            <div className="space-y-6">
+              <BiomarkerBooster profile={profile} onUpdate={onProfileUpdate} />
+              <ProfileSelector currentProfile={profile} onSelectProfile={onProfileUpdate} />
+            </div>
+          </details>
         </aside>
 
         <div className="lg:col-span-8 order-2 min-w-0">
@@ -1571,6 +1784,78 @@ export default function ResultsDashboard({
                     Matching clinical trials
                   </h2>
 
+                  <div className="forecast-panel mb-6">
+                    <div className="min-w-0">
+                      <h3 className="font-display text-lg text-foreground">
+                        Trial readiness forecast
+                      </h3>
+                      <p className="section-hint text-sm font-body mt-1 leading-relaxed">
+                        Not just what matches today, but when you could become eligible.
+                        {forecastTotals.nextDate && (
+                          <>
+                            {" "}
+                            Next eligibility window:{" "}
+                            <span className="text-foreground font-medium">
+                              {formatForecastDate(forecastTotals.nextDate)}
+                            </span>
+                            .
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    {forecastTotals.upcoming > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleExportAllReminders}
+                        className="btn-secondary text-sm whitespace-nowrap shrink-0"
+                      >
+                        Add {forecastTotals.upcoming} reminder
+                        {forecastTotals.upcoming === 1 ? "" : "s"} (.ics)
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                    <div
+                      className="flex flex-wrap gap-1.5"
+                      role="group"
+                      aria-label="Filter by readiness"
+                    >
+                      {READINESS_FILTERS.map((f) => {
+                        const n = countForReadiness(f.key);
+                        if (f.key !== "all" && n === 0) return null;
+                        return (
+                          <button
+                            key={f.key}
+                            type="button"
+                            onClick={() => setReadinessFilter(f.key)}
+                            className={`chip-filter ${
+                              readinessFilter === f.key ? "chip-filter-active" : ""
+                            }`}
+                            aria-pressed={readinessFilter === f.key}
+                          >
+                            {f.label} <span className="chip-count">{n}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-faint font-body shrink-0">
+                      Sort
+                      <select
+                        value={sortBy}
+                        onChange={(e) =>
+                          setSortBy(e.target.value as typeof sortBy)
+                        }
+                        className="field-select text-xs w-auto"
+                      >
+                        <option value="match">Best match</option>
+                        <option value="readiness">Readiness</option>
+                        <option value="phase">Phase</option>
+                        <option value="distance">Nearest</option>
+                      </select>
+                    </label>
+                  </div>
+
                   {newMatchesCount > 0 && (
                     <div className="callout mb-6 flex justify-between items-start gap-4 text-xs font-body">
                       <p>
@@ -1587,22 +1872,41 @@ export default function ResultsDashboard({
                     </div>
                   )}
 
-                  <ol className="space-y-5" aria-label="Matching clinical trials">
-                    {trials.map((trial, index) => (
-                      <TrialCard
-                        key={`${trial.registry}-${trial.trialId}`}
-                        trial={trial}
-                        profile={profile}
-                        index={index}
-                        isSaved={Boolean(savedTrials.find((t) => t.trial.trialId === trial.trialId))}
-                        onSaveToggle={() => handleSaveToggle(trial)}
-                      />
-                    ))}
-                  </ol>
+                  {visibleTrials.length > 0 ? (
+                    <ol className="space-y-5" aria-label="Matching clinical trials">
+                      {visibleTrials.map((trial, index) => (
+                        <TrialCard
+                          key={`${trial.registry}-${trial.trialId}`}
+                          trial={trial}
+                          profile={profile}
+                          forecast={
+                            forecasts.get(trial.trialId) ??
+                            forecastTrialEligibility(trial, profile)
+                          }
+                          index={index}
+                          isSaved={Boolean(savedTrials.find((t) => t.trial.trialId === trial.trialId))}
+                          onSaveToggle={() => handleSaveToggle(trial)}
+                          onAddReminder={handleAddReminder}
+                        />
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="section-hint py-10 text-center font-body">
+                      No trials in this category.{" "}
+                      <button
+                        type="button"
+                        onClick={() => setReadinessFilter("all")}
+                        className="text-primary underline underline-offset-2"
+                      >
+                        Show all
+                      </button>
+                    </p>
+                  )}
 
                   <p className="section-hint mt-8 text-xs max-w-2xl font-body">
-                    Match scores are algorithmic estimates based on submitted clinical information.
-                    Eligibility must be confirmed by the treating physician or study coordinator.
+                    Match scores and eligibility forecasts are algorithmic estimates based on
+                    submitted clinical information. Eligibility must be confirmed by the treating
+                    physician or study coordinator.
                   </p>
                 </section>
               )}

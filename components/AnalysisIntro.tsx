@@ -7,13 +7,13 @@ export default function AnalysisIntro({ mode }: { mode: AppMode }) {
           "Submit a narrative description of diagnosis and treatment history",
           "Key eligibility variables are structured for registry search",
           "ClinicalTrials.gov, EU-CTR, WHO ICTRP, and ISRCTN are queried",
-          "Ranked results are reviewed with the oncology care team",
+          "A readiness forecast shows when you could become eligible",
         ]
       : [
           "Enter diagnosis, stage, biomarkers, and location from the chart",
           "Structured search terms are extracted from clinical input",
           "ClinicalTrials.gov, EU-CTR, WHO ICTRP, and ISRCTN are queried",
-          "A ranked shortlist is prepared for patient discussion",
+          "A readiness forecast projects eligibility timing for discussion",
         ];
 
   return (
