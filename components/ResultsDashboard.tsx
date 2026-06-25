@@ -1674,25 +1674,47 @@ export default function ResultsDashboard({
   };
 
   const handleExportCSV = () => {
-    const headers = ["Title", "Registry", "TrialID", "Status", "Phase", "MatchScore", "BoardStatus"];
-    const rows = savedTrials.map((item) => [
-      item.trial.title,
-      item.trial.registry,
-      item.trial.trialId,
-      item.trial.status,
-      item.trial.phase,
-      `${item.trial.matchScore}%`,
-      item.boardStatus,
-    ].map(escapeCsvCell));
+    const headers = [
+      "Title",
+      "Registry",
+      "TrialID",
+      "Status",
+      "Phase",
+      "MatchScore",
+      "Readiness",
+      "ProjectedEligibleDate",
+      "BoardStatus",
+    ];
+    const rows = savedTrials.map((item) => {
+      const f = forecastTrialEligibility(item.trial, profile);
+      return [
+        item.trial.title,
+        item.trial.registry,
+        item.trial.trialId,
+        item.trial.status,
+        item.trial.phase,
+        `${item.trial.matchScore}%`,
+        f.label,
+        f.earliestDate ?? "",
+        item.boardStatus,
+      ].map(escapeCsvCell);
+    });
     const csvContent = [headers.map(escapeCsvCell).join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "clinical_trials_saved_guide.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    triggerDownload(csvContent, "clinical_trials_saved_guide.csv", "text/csv;charset=utf-8;");
+  };
+
+  const handleExportShortlistReminders = () => {
+    const events: CalendarEvent[] = [];
+    for (const item of savedTrials) {
+      const event = buildReminderEvent(item.trial, forecastTrialEligibility(item.trial, profile));
+      if (event) events.push(event);
+    }
+    if (events.length === 0) return;
+    triggerDownload(
+      buildIcsCalendar(events, { calendarName: "Shortlist eligibility reminders" }),
+      "shortlist-eligibility-reminders.ics",
+      "text/calendar;charset=utf-8"
+    );
   };
 
   return (
@@ -1931,9 +1953,20 @@ export default function ResultsDashboard({
                       </h4>
 
                       <ul className="space-y-0 min-h-[200px] divide-y divide-border-subtle">
-                        {items.map((item) => (
+                        {items.map((item) => {
+                          const f = forecastTrialEligibility(item.trial, profile);
+                          return (
                           <li key={item.trial.trialId} className="py-4 space-y-2 font-body first:pt-0">
-                            <span className="registry-chip">{item.trial.registry}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="registry-chip">{item.trial.registry}</span>
+                              <span
+                                className={`readiness-chip ${readinessChipClass(f.status)}`}
+                                title={f.summary}
+                              >
+                                <span className="readiness-dot" aria-hidden="true" />
+                                {f.label}
+                              </span>
+                            </div>
                             <h4 className="font-display text-xs text-foreground line-clamp-3 leading-snug">
                               {item.trial.title}
                             </h4>
@@ -1959,7 +1992,8 @@ export default function ResultsDashboard({
                               Remove
                             </button>
                           </li>
-                        ))}
+                          );
+                        })}
                         {items.length === 0 && (
                           <li className="py-8 text-faint text-xs italic font-body">
                             No studies in this stage
@@ -1991,6 +2025,13 @@ export default function ResultsDashboard({
                   className="btn-ghost text-xs"
                 >
                   Download CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportShortlistReminders}
+                  className="btn-ghost text-xs"
+                >
+                  Calendar reminders
                 </button>
                 <button
                   type="button"
@@ -2052,6 +2093,7 @@ export default function ResultsDashboard({
               <ul className="space-y-6">
                 {savedTrials.map((item) => {
                   const questions = generatePersonalizedQuestions(profile, item.trial);
+                  const forecast = forecastTrialEligibility(item.trial, profile);
                   return (
                     <li key={item.trial.trialId} className="py-5 border-b border-border-subtle space-y-3 page-break-avoid font-body last:border-0">
                       <div className="flex justify-between items-baseline flex-wrap gap-2">
@@ -2061,7 +2103,19 @@ export default function ResultsDashboard({
                       <p className="text-xs text-faint italic mt-1 font-body line-clamp-3">
                         {truncateTrialSummary(item.trial.summary)}
                       </p>
-                      
+
+                      <p className="text-xs mt-1 font-body">
+                        <span className="font-medium text-foreground">Readiness: </span>
+                        {forecast.label}
+                        {forecast.earliestDate
+                          ? ` (projected ${formatForecastDate(forecast.earliestDate)})`
+                          : ""}
+                        .
+                        {forecast.blockers.length > 0
+                          ? ` Blockers: ${forecast.blockers.join("; ")}.`
+                          : ""}
+                      </p>
+
                       <div className="pt-2">
                         <span className="text-xs font-medium text-faint block mb-1">Consultation questions</span>
                         <ul className="list-disc pl-5 text-xs text-body-muted space-y-1.5">

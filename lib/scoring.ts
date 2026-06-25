@@ -417,7 +417,11 @@ async function scoreTrial(
     if (patientCoords && trial.locations.length > 0) {
       let minDistance = Infinity;
       for (const loc of trial.locations) {
-        const siteCoords = await geocodeLocation(loc.city, loc.state, loc.country);
+        // Offline-only: avoid a per-site Nominatim call (rate-limited to ~1/sec)
+        // that otherwise stalls scoring for 100s+. Falls back to text match below.
+        const siteCoords = await geocodeLocation(loc.city, loc.state, loc.country, {
+          allowNetwork: false,
+        });
         if (siteCoords) {
           const d = calculateDistance(
             patientCoords.lat,
