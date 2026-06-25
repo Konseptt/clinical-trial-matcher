@@ -247,7 +247,7 @@ export function hasContradictoryBiomarkers(
  * when the marker is simply absent (status unknown). Only the former is a true
  * eligibility contradiction; penalizing unknowns would demote possibly-eligible
  * trials. Without this a hard inclusion gate the patient fails (e.g. HER2+
- * patient vs a triple-negative trial) could still surface as a strong match —
+ * patient vs a triple-negative trial) could still surface as a strong match,
  * a false-positive eligibility signal.
  */
 export function biomarkerGatePenalty(
@@ -343,7 +343,11 @@ async function scoreTrial(
   let biomarkerMatchRaw = 0;
   for (const marker of profile.biomarkers) {
     const markerLower = marker.toLowerCase();
-    if (combined.includes(markerLower)) {
+    // "er"/"pr" are substrings of "cancer", "her2", etc., so a plain includes()
+    // credited a same-token trial regardless of polarity ("cancer positive"
+    // matching "ER positive"). Defer those to the boundary-aware branches below.
+    const isShortReceptor = /^(?:er|pr)\b/.test(markerLower);
+    if (!isShortReceptor && combined.includes(markerLower)) {
       biomarkerMatchRaw += 10;
     } else if (markerLower.includes("positive")) {
       const base = escapeRegExp(markerLower.replace(/\s*positive/, "").trim());
@@ -413,7 +417,11 @@ async function scoreTrial(
     if (patientCoords && trial.locations.length > 0) {
       let minDistance = Infinity;
       for (const loc of trial.locations) {
-        const siteCoords = await geocodeLocation(loc.city, loc.state, loc.country);
+        // Offline-only: avoid a per-site Nominatim call (rate-limited to ~1/sec)
+        // that otherwise stalls scoring for 100s+. Falls back to text match below.
+        const siteCoords = await geocodeLocation(loc.city, loc.state, loc.country, {
+          allowNetwork: false,
+        });
         if (siteCoords) {
           const d = calculateDistance(
             patientCoords.lat,
@@ -562,6 +570,8 @@ export async function scoreAllRegistryTrials(
       url: trial.url,
       biomarkerGates,
       washoutChecks,
+      // Cap to keep the serialized response small; the panel re-caps anyway.
+      eligibilityText: (trial.eligibilityText || "").slice(0, 4000),
     } satisfies MatchedTrial;
   });
 
@@ -588,6 +598,8 @@ export async function scoreAndRankTrials(
       url: trial.url,
       biomarkerGates,
       washoutChecks,
+      // Cap to keep the serialized response small; the panel re-caps anyway.
+      eligibilityText: (trial.eligibilityText || "").slice(0, 4000),
     } satisfies MatchedTrial;
   });
 

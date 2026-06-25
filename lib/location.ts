@@ -179,6 +179,74 @@ const LOCAL_GEOCODE_DB: Record<string, { lat: number; lon: number }> = {
   "cambridge": { lat: 42.3736, lon: -71.1097 },
   "worcester, ma": { lat: 42.2626, lon: -71.8023 },
   "providence, ri": { lat: 41.8240, lon: -71.4128 },
+
+  // Bare-city keys for common trial-site metros and cancer hubs. The lookup
+  // falls back to a city-only match, so these resolve instantly without an
+  // online Nominatim call (faster scoring, no rate-limit risk). Approximate
+  // metro centroids; same-name collisions resolve to the larger/listed city.
+  "houston": { lat: 29.7604, lon: -95.3698 },
+  "dallas": { lat: 32.7767, lon: -96.797 },
+  "austin": { lat: 30.2672, lon: -97.7431 },
+  "philadelphia": { lat: 39.9526, lon: -75.1652 },
+  "pittsburgh": { lat: 40.4406, lon: -79.9959 },
+  "atlanta": { lat: 33.749, lon: -84.388 },
+  "miami": { lat: 25.7617, lon: -80.1918 },
+  "denver": { lat: 39.7392, lon: -104.9903 },
+  "phoenix": { lat: 33.4484, lon: -112.074 },
+  "san diego": { lat: 32.7157, lon: -117.1611 },
+  "portland": { lat: 45.5152, lon: -122.6784 },
+  "minneapolis": { lat: 44.9778, lon: -93.265 },
+  "detroit": { lat: 42.3314, lon: -83.0458 },
+  "cleveland": { lat: 41.4993, lon: -81.6944 },
+  "columbus": { lat: 39.9612, lon: -82.9988 },
+  "nashville": { lat: 36.1627, lon: -86.7816 },
+  "st. louis": { lat: 38.627, lon: -90.1994 },
+  "baltimore": { lat: 39.2904, lon: -76.6122 },
+  "washington": { lat: 38.9072, lon: -77.0369 },
+  "san antonio": { lat: 29.4241, lon: -98.4936 },
+  "san jose": { lat: 37.3382, lon: -121.8863 },
+  "sacramento": { lat: 38.5816, lon: -121.4944 },
+  "tampa": { lat: 27.9506, lon: -82.4572 },
+  "orlando": { lat: 28.5383, lon: -81.3792 },
+  "charlotte": { lat: 35.2271, lon: -80.8431 },
+  "indianapolis": { lat: 39.7684, lon: -86.1581 },
+  "kansas city": { lat: 39.0997, lon: -94.5786 },
+  "salt lake city": { lat: 40.7608, lon: -111.891 },
+  "rochester": { lat: 44.0121, lon: -92.4802 },
+  "ann arbor": { lat: 42.2808, lon: -83.743 },
+  "durham": { lat: 35.994, lon: -78.8986 },
+  "new haven": { lat: 41.3083, lon: -72.9279 },
+  "vancouver": { lat: 49.2827, lon: -123.1207 },
+  "calgary": { lat: 51.0447, lon: -114.0719 },
+  "ottawa": { lat: 45.4215, lon: -75.6972 },
+  "edmonton": { lat: 53.5461, lon: -113.4938 },
+  "paris": { lat: 48.8566, lon: 2.3522 },
+  "berlin": { lat: 52.52, lon: 13.405 },
+  "munich": { lat: 48.1351, lon: 11.582 },
+  "madrid": { lat: 40.4168, lon: -3.7038 },
+  "barcelona": { lat: 41.3851, lon: 2.1734 },
+  "rome": { lat: 41.9028, lon: 12.4964 },
+  "milan": { lat: 45.4642, lon: 9.19 },
+  "amsterdam": { lat: 52.3676, lon: 4.9041 },
+  "brussels": { lat: 50.8503, lon: 4.3517 },
+  "zurich": { lat: 47.3769, lon: 8.5417 },
+  "vienna": { lat: 48.2082, lon: 16.3738 },
+  "stockholm": { lat: 59.3293, lon: 18.0686 },
+  "copenhagen": { lat: 55.6761, lon: 12.5683 },
+  "oslo": { lat: 59.9139, lon: 10.7522 },
+  "dublin": { lat: 53.3498, lon: -6.2603 },
+  "manchester": { lat: 53.4808, lon: -2.2426 },
+  "edinburgh": { lat: 55.9533, lon: -3.1883 },
+  "sydney": { lat: -33.8688, lon: 151.2093 },
+  "melbourne": { lat: -37.8136, lon: 144.9631 },
+  "tokyo": { lat: 35.6762, lon: 139.6503 },
+  "seoul": { lat: 37.5665, lon: 126.978 },
+  "singapore": { lat: 1.3521, lon: 103.8198 },
+  "mumbai": { lat: 19.076, lon: 72.8777 },
+  "delhi": { lat: 28.6139, lon: 77.209 },
+  "bangalore": { lat: 12.9716, lon: 77.5946 },
+  "são paulo": { lat: -23.5505, lon: -46.6333 },
+  "sao paulo": { lat: -23.5505, lon: -46.6333 },
 };
 
 const geocodeCache: Record<string, { lat: number; lon: number }> = {};
@@ -207,8 +275,16 @@ function throttledNominatim<T>(task: () => Promise<T>): Promise<T> {
 export async function geocodeLocation(
   city: string | null,
   state: string | null,
-  country: string | null
+  country: string | null,
+  options: { allowNetwork?: boolean } = {}
 ): Promise<{ lat: number; lon: number } | null> {
+  // Trial scoring runs for every trial via Promise.all and every trial has
+  // several sites. The Nominatim gate serializes network calls at ~1/sec, so
+  // geocoding every distinct site online turned scoring into a 100s+ stall.
+  // Sites pass allowNetwork:false (offline DB only); only the single patient
+  // lookup keeps the online fallback.
+  const allowNetwork = options.allowNetwork ?? true;
+
   if (!city && !country) return null;
   const query = [city, state, country].filter(Boolean).join(", ");
   const cacheKey = query.toLowerCase();
@@ -227,6 +303,8 @@ export async function geocodeLocation(
   if (city && LOCAL_GEOCODE_DB[city.toLowerCase()]) {
     return LOCAL_GEOCODE_DB[city.toLowerCase()];
   }
+
+  if (!allowNetwork) return null;
 
   // Reuse an outstanding network lookup for the same place.
   const pending = inFlight.get(cacheKey);

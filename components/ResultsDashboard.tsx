@@ -1,9 +1,14 @@
 import Link from "next/link";
-import { useState, useEffect, useTransition, useRef } from "react";
+import { useState, useEffect, useMemo, useTransition, useRef } from "react";
 import {
   getSimplifiedSummaryAction,
   integrateWhoTrialsAction,
+  runEligibilityPanelAction,
 } from "@/app/actions/match";
+import type {
+  EligibilityPanelResult,
+  ReviewVerdict,
+} from "@/lib/agents/eligibility-panel";
 import { queryWhoIctrpFromBrowser } from "@/lib/registries/who-ictrp-client";
 import {
   escapeCsvCell,
@@ -14,6 +19,15 @@ import {
   TRIAL_SUMMARY_DISPLAY_MAX,
 } from "@/lib/format";
 import { formatLocationDisplay } from "@/lib/location";
+import { parsePhaseRank } from "@/lib/registries/filters";
+import {
+  forecastTrialEligibility,
+  formatForecastDate,
+  summarizeForecasts,
+  type EligibilityForecast,
+  type ReadinessStatus,
+} from "@/lib/eligibility-forecast";
+import { buildIcsCalendar, type CalendarEvent } from "@/lib/ics";
 import type {
   MatchResponse,
   PatientProfile,
@@ -22,6 +36,84 @@ import type {
   TreatmentHistory,
   SimplifiedTrialGuide,
 } from "@/lib/types";
+
+const READINESS_RANK: Record<ReadinessStatus, number> = {
+  ready: 0,
+  upcoming: 1,
+  "action-needed": 2,
+  "opens-later": 3,
+  "likely-ineligible": 4,
+};
+
+const READINESS_FILTERS: Array<{ key: "all" | ReadinessStatus; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "ready", label: "Ready now" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "action-needed", label: "Action needed" },
+  { key: "opens-later", label: "Opens later" },
+  { key: "likely-ineligible", label: "Re-check" },
+];
+
+function verdictLabel(v: ReviewVerdict): string {
+  if (v === "likely-eligible") return "Likely eligible";
+  if (v === "likely-ineligible") return "Likely ineligible";
+  return "Uncertain";
+}
+
+function verdictChipClass(v: ReviewVerdict): string {
+  if (v === "likely-eligible") return "readiness-ready";
+  if (v === "likely-ineligible") return "readiness-ineligible";
+  return "readiness-action";
+}
+
+function verdictTextClass(v: ReviewVerdict): string {
+  if (v === "likely-eligible") return "verdict-pos";
+  if (v === "likely-ineligible") return "verdict-neg";
+  return "verdict-neutral";
+}
+
+function readinessChipClass(status: ReadinessStatus): string {
+  switch (status) {
+    case "ready":
+      return "readiness-ready";
+    case "upcoming":
+      return "readiness-upcoming";
+    case "action-needed":
+      return "readiness-action";
+    case "opens-later":
+      return "readiness-later";
+    case "likely-ineligible":
+      return "readiness-ineligible";
+  }
+}
+
+function triggerDownload(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function buildReminderEvent(
+  trial: MatchedTrial,
+  forecast: EligibilityForecast
+): CalendarEvent | null {
+  if (forecast.status !== "upcoming" || !forecast.earliestDate) return null;
+  return {
+    uid: `${trial.registry}-${trial.trialId}@clinical-trial-matcher`,
+    date: forecast.earliestDate,
+    title: `Re-check trial eligibility: ${trial.title.slice(0, 80)}`,
+    description: `A treatment washout window is projected to clear around ${formatForecastDate(
+      forecast.earliestDate
+    )}, which may open this study to you. Confirm eligibility with the study team.\nTrial ${trial.trialId} (${trial.registry}).`,
+    url: trial.url,
+  };
+}
 
 interface ResultsDashboardProps {
   data: MatchResponse;
@@ -790,15 +882,19 @@ function SimplifiedTrialGuideView({
 function TrialCard({
   trial,
   profile,
+  forecast,
   index,
   isSaved,
   onSaveToggle,
+  onAddReminder,
 }: {
   trial: MatchedTrial;
   profile: PatientProfile;
+  forecast: EligibilityForecast;
   index: number;
   isSaved: boolean;
   onSaveToggle: () => void;
+  onAddReminder: (trial: MatchedTrial, forecast: EligibilityForecast) => void;
 }) {
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [simplifiedGuide, setSimplifiedGuide] = useState<SimplifiedTrialGuide | null>(null);
@@ -806,7 +902,29 @@ function TrialCard({
   const [simplifyError, setSimplifyError] = useState<string | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [isSimplifying, startSimplify] = useTransition();
+  const [panel, setPanel] = useState<EligibilityPanelResult | null>(null);
+  const [panelError, setPanelError] = useState<string | null>(null);
+  const [isRunningPanel, startPanel] = useTransition();
   const bd = trial.scoreBreakdown;
+
+  const handleRunPanel = () => {
+    setPanelError(null);
+    startPanel(async () => {
+      const result = await runEligibilityPanelAction({
+        trialTitle: trial.title,
+        trialSummary: trial.summary,
+        trialEligibility: trial.eligibilityText ?? "",
+        trialPhase: trial.phase,
+        trialStatus: trial.status,
+        profile,
+      });
+      if ("error" in result) {
+        setPanelError(result.error);
+        return;
+      }
+      setPanel(result.result);
+    });
+  };
 
   const fullSummary = normalizeTrialSummary(trial.summary);
   const isLongSummary = fullSummary.length > TRIAL_SUMMARY_DISPLAY_MAX;
@@ -850,16 +968,25 @@ function TrialCard({
         </span>
 
         <div className="min-w-0 space-y-3">
-          <p className="meta-strip">
-            {[
-              trial.registry,
-              formatTrialStatus(trial.status),
-              trial.phase !== "Not specified" ? trial.phase : null,
-              trial.distance !== null ? `${trial.distance} mi` : null,
-            ]
-              .filter(Boolean)
-              .join(", ")}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span
+              className={`readiness-chip ${readinessChipClass(forecast.status)}`}
+              title={forecast.summary}
+            >
+              <span className="readiness-dot" aria-hidden="true" />
+              {forecast.label}
+            </span>
+            <p className="meta-strip">
+              {[
+                trial.registry,
+                formatTrialStatus(trial.status),
+                trial.phase !== "Not specified" ? trial.phase : null,
+                trial.distance !== null ? `${trial.distance} mi` : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}
+            </p>
+          </div>
 
           <h3
             id={`trial-title-${trial.trialId}`}
@@ -912,12 +1039,27 @@ function TrialCard({
                     ? "Regenerate summary"
                     : "Generate patient summary"}
               </button>
+              <button
+                type="button"
+                onClick={handleRunPanel}
+                disabled={isRunningPanel}
+                className="btn-ghost text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRunningPanel
+                  ? "Convening review panel"
+                  : panel
+                    ? "Re-run review panel"
+                    : "Run eligibility review panel"}
+              </button>
               {simplifiedGuide && !showOriginalSummary && (
                 <span className="text-xs text-faint font-body">
                   Profile-specific summary; not medical advice
                 </span>
               )}
             </div>
+            {panelError && (
+              <p className="text-xs text-destructive mt-1 font-body">{panelError}</p>
+            )}
             {simplifyError && (
               <p className="text-xs text-destructive mt-1 font-body">{simplifyError}</p>
             )}
@@ -985,6 +1127,118 @@ function TrialCard({
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {(forecast.blockers.length > 0 || forecast.actions.length > 0) && (
+              <div className="mt-5 text-xs space-y-2">
+                <p className="guide-heading">Eligibility forecast</p>
+                {forecast.status === "upcoming" && forecast.earliestDate && (
+                  <p className="text-sm text-foreground font-body">
+                    Projected eligible around{" "}
+                    <span className="font-semibold">
+                      {formatForecastDate(forecast.earliestDate)}
+                    </span>{" "}
+                    as a treatment washout window clears.
+                  </p>
+                )}
+                {forecast.blockers.length > 0 && (
+                  <ul className="space-y-1 text-faint">
+                    {forecast.blockers.map((b, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span aria-hidden="true">-</span>
+                        <span>{b}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {forecast.actions.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-foreground font-medium">Next steps</p>
+                    <ul className="space-y-1 text-faint">
+                      {forecast.actions.map((a, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span aria-hidden="true">-</span>
+                          <span>{a}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {forecast.status === "upcoming" && forecast.earliestDate && (
+                  <button
+                    type="button"
+                    onClick={() => onAddReminder(trial, forecast)}
+                    className="btn-ghost text-xs mt-1"
+                  >
+                    Add calendar reminder
+                  </button>
+                )}
+              </div>
+            )}
+
+            {panel && (
+              <div className="mt-5 space-y-3 text-xs">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="guide-heading">Eligibility review panel</p>
+                  <span
+                    className={`readiness-chip ${verdictChipClass(panel.consensus.verdict)}`}
+                  >
+                    <span className="readiness-dot" aria-hidden="true" />
+                    Consensus: {verdictLabel(panel.consensus.verdict)} (
+                    {panel.consensus.confidence}%)
+                  </span>
+                </div>
+                {panel.consensus.conflicts.length > 0 && (
+                  <p className="text-faint">
+                    Split opinion: {panel.consensus.conflicts.join("; ")}.
+                  </p>
+                )}
+                <ul className="space-y-3">
+                  {panel.reviewers.map((r) => (
+                    <li
+                      key={r.id}
+                      className="space-y-1 border-b border-border-subtle pb-3 last:border-0"
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-foreground font-medium">{r.role}</span>
+                        <span className={verdictTextClass(r.verdict)}>
+                          {verdictLabel(r.verdict)} ({r.confidence}%)
+                        </span>
+                      </div>
+                      <p className="text-faint">
+                        {r.focus}.{r.rationale ? ` ${r.rationale}` : ""}
+                      </p>
+                      {r.questions.length > 0 && (
+                        <ul className="space-y-0.5 text-faint pl-3">
+                          {r.questions.map((q, i) => (
+                            <li key={i} className="italic">
+                              {q}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {panel.consensus.questions.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-foreground font-medium">
+                      Questions for the study team
+                    </p>
+                    <ul className="space-y-0.5 text-faint pl-3">
+                      {panel.consensus.questions.map((q, i) => (
+                        <li key={i} className="italic">
+                          {q}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-faint">
+                  Decision support only. Each reviewer judges one axis; confirm
+                  eligibility with the study team.
+                </p>
               </div>
             )}
         </div>
@@ -1316,6 +1570,85 @@ export default function ResultsDashboard({
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [newMatchesCount, setNewMatchesCount] = useState(0);
   const [lastSearchDate, setLastSearchDate] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"match" | "readiness" | "phase" | "distance">("match");
+  const [readinessFilter, setReadinessFilter] = useState<"all" | ReadinessStatus>("all");
+
+  const forecasts = useMemo(() => {
+    const map = new Map<string, EligibilityForecast>();
+    for (const t of trials) map.set(t.trialId, forecastTrialEligibility(t, profile));
+    return map;
+  }, [trials, profile]);
+
+  const forecastTotals = useMemo(
+    () => summarizeForecasts(Array.from(forecasts.values())),
+    [forecasts]
+  );
+
+  const countForReadiness = (key: "all" | ReadinessStatus): number => {
+    switch (key) {
+      case "all":
+        return trials.length;
+      case "ready":
+        return forecastTotals.ready;
+      case "upcoming":
+        return forecastTotals.upcoming;
+      case "action-needed":
+        return forecastTotals.actionNeeded;
+      case "opens-later":
+        return forecastTotals.opensLater;
+      case "likely-ineligible":
+        return forecastTotals.likelyIneligible;
+    }
+  };
+
+  const visibleTrials = useMemo(() => {
+    const filtered =
+      readinessFilter === "all"
+        ? trials
+        : trials.filter((t) => forecasts.get(t.trialId)?.status === readinessFilter);
+
+    // "Best match" keeps the server ranking (phase II+ first, then score).
+    if (sortBy === "match") return filtered;
+
+    const rankOf = (t: MatchedTrial) =>
+      READINESS_RANK[forecasts.get(t.trialId)?.status ?? "ready"];
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "readiness")
+        return rankOf(a) - rankOf(b) || b.matchScore - a.matchScore;
+      if (sortBy === "phase")
+        return parsePhaseRank(b.phase) - parsePhaseRank(a.phase) || b.matchScore - a.matchScore;
+      // "distance": closest first, trials without a distance sink to the bottom.
+      const da = a.distance ?? Number.POSITIVE_INFINITY;
+      const db = b.distance ?? Number.POSITIVE_INFINITY;
+      return da - db || b.matchScore - a.matchScore;
+    });
+  }, [trials, forecasts, sortBy, readinessFilter]);
+
+  const handleAddReminder = (trial: MatchedTrial, forecast: EligibilityForecast) => {
+    const event = buildReminderEvent(trial, forecast);
+    if (!event) return;
+    triggerDownload(
+      buildIcsCalendar([event], { calendarName: "Trial eligibility reminder" }),
+      `eligibility-${trial.trialId}.ics`,
+      "text/calendar;charset=utf-8"
+    );
+  };
+
+  const handleExportAllReminders = () => {
+    const events: CalendarEvent[] = [];
+    for (const t of trials) {
+      const forecast = forecasts.get(t.trialId);
+      const event = forecast ? buildReminderEvent(t, forecast) : null;
+      if (event) events.push(event);
+    }
+    if (events.length === 0) return;
+    triggerDownload(
+      buildIcsCalendar(events, { calendarName: "Trial eligibility reminders" }),
+      "trial-eligibility-reminders.ics",
+      "text/calendar;charset=utf-8"
+    );
+  };
 
   useEffect(() => {
     // Reset view state when a new search result (data prop) arrives.
@@ -1466,25 +1799,47 @@ export default function ResultsDashboard({
   };
 
   const handleExportCSV = () => {
-    const headers = ["Title", "Registry", "TrialID", "Status", "Phase", "MatchScore", "BoardStatus"];
-    const rows = savedTrials.map((item) => [
-      item.trial.title,
-      item.trial.registry,
-      item.trial.trialId,
-      item.trial.status,
-      item.trial.phase,
-      `${item.trial.matchScore}%`,
-      item.boardStatus,
-    ].map(escapeCsvCell));
+    const headers = [
+      "Title",
+      "Registry",
+      "TrialID",
+      "Status",
+      "Phase",
+      "MatchScore",
+      "Readiness",
+      "ProjectedEligibleDate",
+      "BoardStatus",
+    ];
+    const rows = savedTrials.map((item) => {
+      const f = forecastTrialEligibility(item.trial, profile);
+      return [
+        item.trial.title,
+        item.trial.registry,
+        item.trial.trialId,
+        item.trial.status,
+        item.trial.phase,
+        `${item.trial.matchScore}%`,
+        f.label,
+        f.earliestDate ?? "",
+        item.boardStatus,
+      ].map(escapeCsvCell);
+    });
     const csvContent = [headers.map(escapeCsvCell).join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "clinical_trials_saved_guide.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    triggerDownload(csvContent, "clinical_trials_saved_guide.csv", "text/csv;charset=utf-8;");
+  };
+
+  const handleExportShortlistReminders = () => {
+    const events: CalendarEvent[] = [];
+    for (const item of savedTrials) {
+      const event = buildReminderEvent(item.trial, forecastTrialEligibility(item.trial, profile));
+      if (event) events.push(event);
+    }
+    if (events.length === 0) return;
+    triggerDownload(
+      buildIcsCalendar(events, { calendarName: "Shortlist eligibility reminders" }),
+      "shortlist-eligibility-reminders.ics",
+      "text/calendar;charset=utf-8"
+    );
   };
 
   return (
@@ -1545,8 +1900,13 @@ export default function ResultsDashboard({
             summaries={displayData.registrySummaries}
             whoSearchState={whoSearchState}
           />
-          <BiomarkerBooster profile={profile} onUpdate={onProfileUpdate} />
-          <ProfileSelector currentProfile={profile} onSelectProfile={onProfileUpdate} />
+          <details className="tools-disclosure">
+            <summary>Refine &amp; tools</summary>
+            <div className="space-y-6">
+              <BiomarkerBooster profile={profile} onUpdate={onProfileUpdate} />
+              <ProfileSelector currentProfile={profile} onSelectProfile={onProfileUpdate} />
+            </div>
+          </details>
         </aside>
 
         <div className="lg:col-span-8 order-2 min-w-0">
@@ -1571,6 +1931,78 @@ export default function ResultsDashboard({
                     Matching clinical trials
                   </h2>
 
+                  <div className="forecast-panel mb-6">
+                    <div className="min-w-0">
+                      <h3 className="font-display text-lg text-foreground">
+                        Trial readiness forecast
+                      </h3>
+                      <p className="section-hint text-sm font-body mt-1 leading-relaxed">
+                        Not just what matches today, but when you could become eligible.
+                        {forecastTotals.nextDate && (
+                          <>
+                            {" "}
+                            Next eligibility window:{" "}
+                            <span className="text-foreground font-medium">
+                              {formatForecastDate(forecastTotals.nextDate)}
+                            </span>
+                            .
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    {forecastTotals.upcoming > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleExportAllReminders}
+                        className="btn-secondary text-sm whitespace-nowrap shrink-0"
+                      >
+                        Add {forecastTotals.upcoming} reminder
+                        {forecastTotals.upcoming === 1 ? "" : "s"} (.ics)
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                    <div
+                      className="flex flex-wrap gap-1.5"
+                      role="group"
+                      aria-label="Filter by readiness"
+                    >
+                      {READINESS_FILTERS.map((f) => {
+                        const n = countForReadiness(f.key);
+                        if (f.key !== "all" && n === 0) return null;
+                        return (
+                          <button
+                            key={f.key}
+                            type="button"
+                            onClick={() => setReadinessFilter(f.key)}
+                            className={`chip-filter ${
+                              readinessFilter === f.key ? "chip-filter-active" : ""
+                            }`}
+                            aria-pressed={readinessFilter === f.key}
+                          >
+                            {f.label} <span className="chip-count">{n}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-faint font-body shrink-0">
+                      Sort
+                      <select
+                        value={sortBy}
+                        onChange={(e) =>
+                          setSortBy(e.target.value as typeof sortBy)
+                        }
+                        className="field-select text-xs w-auto"
+                      >
+                        <option value="match">Best match</option>
+                        <option value="readiness">Readiness</option>
+                        <option value="phase">Phase</option>
+                        <option value="distance">Nearest</option>
+                      </select>
+                    </label>
+                  </div>
+
                   {newMatchesCount > 0 && (
                     <div className="callout mb-6 flex justify-between items-start gap-4 text-xs font-body">
                       <p>
@@ -1587,22 +2019,41 @@ export default function ResultsDashboard({
                     </div>
                   )}
 
-                  <ol className="space-y-5" aria-label="Matching clinical trials">
-                    {trials.map((trial, index) => (
-                      <TrialCard
-                        key={`${trial.registry}-${trial.trialId}`}
-                        trial={trial}
-                        profile={profile}
-                        index={index}
-                        isSaved={Boolean(savedTrials.find((t) => t.trial.trialId === trial.trialId))}
-                        onSaveToggle={() => handleSaveToggle(trial)}
-                      />
-                    ))}
-                  </ol>
+                  {visibleTrials.length > 0 ? (
+                    <ol className="space-y-5" aria-label="Matching clinical trials">
+                      {visibleTrials.map((trial, index) => (
+                        <TrialCard
+                          key={`${trial.registry}-${trial.trialId}`}
+                          trial={trial}
+                          profile={profile}
+                          forecast={
+                            forecasts.get(trial.trialId) ??
+                            forecastTrialEligibility(trial, profile)
+                          }
+                          index={index}
+                          isSaved={Boolean(savedTrials.find((t) => t.trial.trialId === trial.trialId))}
+                          onSaveToggle={() => handleSaveToggle(trial)}
+                          onAddReminder={handleAddReminder}
+                        />
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="section-hint py-10 text-center font-body">
+                      No trials in this category.{" "}
+                      <button
+                        type="button"
+                        onClick={() => setReadinessFilter("all")}
+                        className="text-primary underline underline-offset-2"
+                      >
+                        Show all
+                      </button>
+                    </p>
+                  )}
 
                   <p className="section-hint mt-8 text-xs max-w-2xl font-body">
-                    Match scores are algorithmic estimates based on submitted clinical information.
-                    Eligibility must be confirmed by the treating physician or study coordinator.
+                    Match scores and eligibility forecasts are algorithmic estimates based on
+                    submitted clinical information. Eligibility must be confirmed by the treating
+                    physician or study coordinator.
                   </p>
                 </section>
               )}
@@ -1627,9 +2078,20 @@ export default function ResultsDashboard({
                       </h4>
 
                       <ul className="space-y-0 min-h-[200px] divide-y divide-border-subtle">
-                        {items.map((item) => (
+                        {items.map((item) => {
+                          const f = forecastTrialEligibility(item.trial, profile);
+                          return (
                           <li key={item.trial.trialId} className="py-4 space-y-2 font-body first:pt-0">
-                            <span className="registry-chip">{item.trial.registry}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="registry-chip">{item.trial.registry}</span>
+                              <span
+                                className={`readiness-chip ${readinessChipClass(f.status)}`}
+                                title={f.summary}
+                              >
+                                <span className="readiness-dot" aria-hidden="true" />
+                                {f.label}
+                              </span>
+                            </div>
                             <h4 className="font-display text-xs text-foreground line-clamp-3 leading-snug">
                               {item.trial.title}
                             </h4>
@@ -1655,7 +2117,8 @@ export default function ResultsDashboard({
                               Remove
                             </button>
                           </li>
-                        ))}
+                          );
+                        })}
                         {items.length === 0 && (
                           <li className="py-8 text-faint text-xs italic font-body">
                             No studies in this stage
@@ -1687,6 +2150,13 @@ export default function ResultsDashboard({
                   className="btn-ghost text-xs"
                 >
                   Download CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportShortlistReminders}
+                  className="btn-ghost text-xs"
+                >
+                  Calendar reminders
                 </button>
                 <button
                   type="button"
@@ -1748,6 +2218,7 @@ export default function ResultsDashboard({
               <ul className="space-y-6">
                 {savedTrials.map((item) => {
                   const questions = generatePersonalizedQuestions(profile, item.trial);
+                  const forecast = forecastTrialEligibility(item.trial, profile);
                   return (
                     <li key={item.trial.trialId} className="py-5 border-b border-border-subtle space-y-3 page-break-avoid font-body last:border-0">
                       <div className="flex justify-between items-baseline flex-wrap gap-2">
@@ -1757,7 +2228,19 @@ export default function ResultsDashboard({
                       <p className="text-xs text-faint italic mt-1 font-body line-clamp-3">
                         {truncateTrialSummary(item.trial.summary)}
                       </p>
-                      
+
+                      <p className="text-xs mt-1 font-body">
+                        <span className="font-medium text-foreground">Readiness: </span>
+                        {forecast.label}
+                        {forecast.earliestDate
+                          ? ` (projected ${formatForecastDate(forecast.earliestDate)})`
+                          : ""}
+                        .
+                        {forecast.blockers.length > 0
+                          ? ` Blockers: ${forecast.blockers.join("; ")}.`
+                          : ""}
+                      </p>
+
                       <div className="pt-2">
                         <span className="text-xs font-medium text-faint block mb-1">Consultation questions</span>
                         <ul className="list-disc pl-5 text-xs text-body-muted space-y-1.5">

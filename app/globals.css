@@ -377,6 +377,98 @@
   .board-column-title {
     @apply font-display text-sm font-semibold text-foreground mb-4 pb-2 border-b border-border;
   }
+
+  /* Eligibility Forecast (the readiness USP) */
+  .forecast-panel {
+    @apply border border-border bg-muted/40 p-4 sm:p-5
+      flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4;
+  }
+
+  .readiness-chip {
+    @apply inline-flex items-center gap-1.5 font-body text-xs font-semibold
+      px-2.5 py-1 border whitespace-nowrap;
+  }
+
+  .readiness-dot {
+    @apply w-1.5 h-1.5 rounded-full shrink-0;
+    background: currentColor;
+  }
+
+  .readiness-ready {
+    color: var(--color-match-high);
+    border-color: color-mix(in srgb, var(--color-match-high) 35%, transparent);
+    background: color-mix(in srgb, var(--color-match-high) 8%, transparent);
+  }
+
+  .readiness-upcoming {
+    color: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  }
+
+  .readiness-action {
+    color: var(--color-match-mid);
+    border-color: color-mix(in srgb, var(--color-match-mid) 35%, transparent);
+    background: color-mix(in srgb, var(--color-match-mid) 8%, transparent);
+  }
+
+  .readiness-later {
+    color: var(--color-faint);
+    border-color: var(--color-border-subtle);
+    background: transparent;
+  }
+
+  .readiness-ineligible {
+    color: var(--color-match-low);
+    border-color: color-mix(in srgb, var(--color-match-low) 35%, transparent);
+    background: color-mix(in srgb, var(--color-match-low) 8%, transparent);
+  }
+
+  .chip-filter {
+    @apply inline-flex items-center gap-1.5 font-body text-xs font-medium text-faint
+      px-3 py-1.5 border border-border-subtle cursor-pointer transition-colors
+      hover:border-border hover:text-foreground
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+
+  .chip-filter-active {
+    @apply border-foreground text-foreground bg-muted;
+  }
+
+  .chip-count {
+    @apply tabular-nums text-faint-muted;
+  }
+
+  .verdict-pos {
+    color: var(--color-match-high);
+  }
+
+  .verdict-neutral {
+    color: var(--color-match-mid);
+  }
+
+  .verdict-neg {
+    color: var(--color-match-low);
+  }
+
+  .tools-disclosure > summary {
+    @apply font-display text-lg text-foreground cursor-pointer list-none
+      flex items-center justify-between py-1
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+
+  .tools-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .tools-disclosure > summary::after {
+    content: "+";
+    @apply text-faint font-body text-base;
+  }
+
+  .tools-disclosure[open] > summary::after {
+    content: "-";
+  }
 }
 
 @keyframes trial-fade {

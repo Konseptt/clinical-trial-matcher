@@ -73,7 +73,9 @@ export default function ResultsPage() {
     startUpdateTransition(async () => {
       try {
         const result = await getResultsByProfileAction(updatedProfile);
-        setData(result);
+        // Profile-based search defaults to doctor mode server-side; keep the
+        // view's current mode so the label does not silently flip on edit.
+        setData({ ...result, mode });
       } catch (err) {
         console.error(err);
         alert("Unable to refresh results. Please verify the patient profile fields.");

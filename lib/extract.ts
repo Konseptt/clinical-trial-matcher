@@ -1,21 +1,41 @@
 import type { PatientProfile } from "./types";
 import { parseLocationFromNotes } from "./location";
 
+// Order matters: more specific terms first so a generic token does not swallow
+// a longer phrase (e.g. "lymphoma" before it, "hodgkin"; "colon" vs
+// "colorectal"). Single-word entries match anywhere in the narrative.
 const CANCER_TYPES = [
   "breast cancer",
+  "non-small cell lung",
+  "small cell lung",
   "lung cancer",
   "melanoma",
-  // More specific terms first: "lymphoma" would otherwise swallow
-  // "non-hodgkin lymphoma" / "hodgkin lymphoma" before they are reached.
   "non-hodgkin",
   "hodgkin",
   "lymphoma",
   "leukemia",
   "glioblastoma",
+  "glioma",
+  "colorectal cancer",
+  "rectal cancer",
   "colon cancer",
   "prostate cancer",
   "ovarian cancer",
   "pancreatic cancer",
+  "hepatocellular",
+  "liver cancer",
+  "renal cell",
+  "kidney cancer",
+  "bladder cancer",
+  "gastric cancer",
+  "stomach cancer",
+  "esophageal cancer",
+  "endometrial cancer",
+  "cervical cancer",
+  "head and neck",
+  "thyroid cancer",
+  "mesothelioma",
+  "sarcoma",
   "nsclc",
   "sclc",
   "multiple myeloma",
@@ -65,36 +85,82 @@ function extractDiagnosis(rawText: string): string {
     .trim();
 }
 
+// Read the polarity of a short receptor token (er, pr). Anchored with
+// (?<![a-z]) so "er" is never matched inside "her2", "cancer", etc. The prior
+// version used a bare `er\s*-` alternative that matched the hyphen in "HER-2"
+// (phantom "ER negative") and, worse, inverted "ER-positive" into negative.
+function detectReceptorStatus(
+  lower: string,
+  token: string
+): "positive" | "negative" | null {
+  const b = `(?<![a-z])${token}`;
+  if (new RegExp(`${b}[\\s\\-]*(?:positive|pos)\\b`, "i").test(lower)) return "positive";
+  if (new RegExp(`${b}\\+`, "i").test(lower)) return "positive";
+  if (new RegExp(`${b}[\\s\\-]*(?:negative|neg)\\b`, "i").test(lower)) return "negative";
+  // Bare "ER-" shorthand is negative, but only when it is not "ER-positive".
+  if (new RegExp(`${b}-(?![a-z])`, "i").test(lower)) return "negative";
+  return null;
+}
+
 function normalizeBiomarkers(rawText: string): string[] {
   const markers: string[] = [];
   const lower = rawText.toLowerCase();
 
-  if (/her2[\s\-\+]*positive|her2\+/i.test(lower)) markers.push("HER2 positive");
-  else if (/\bher2\b/i.test(lower)) markers.push("HER2");
+  // HER2: allow an optional separator so "HER2", "HER-2", and "HER 2" all match,
+  // and capture negativity (the prior version silently dropped HER2-negative,
+  // breaking triple-negative gating from narrative input).
+  const her2 = `(?<![a-z])her[\\s\\-]?2`;
+  if (
+    new RegExp(`${her2}[\\s\\-]*(?:positive|pos)\\b`, "i").test(lower) ||
+    new RegExp(`${her2}\\+`, "i").test(lower)
+  ) {
+    markers.push("HER2 positive");
+  } else if (
+    new RegExp(`${her2}[\\s\\-]*(?:negative|neg)\\b`, "i").test(lower) ||
+    new RegExp(`${her2}-(?![a-z])`, "i").test(lower)
+  ) {
+    markers.push("HER2 negative");
+  } else if (new RegExp(`${her2}\\b`, "i").test(lower)) {
+    markers.push("HER2");
+  }
 
-  if (/er[\s\-\+]*negative|er\s*-/i.test(lower)) markers.push("ER negative");
-  else if (/er[\s\-\+]*positive|er\s*\+/i.test(lower)) markers.push("ER positive");
+  const er = detectReceptorStatus(lower, "er");
+  if (er) markers.push(`ER ${er}`);
 
-  if (/pr[\s\-\+]*negative|pr\s*-/i.test(lower)) markers.push("PR negative");
-  else if (/pr[\s\-\+]*positive|pr\s*\+/i.test(lower)) markers.push("PR positive");
+  const pr = detectReceptorStatus(lower, "pr");
+  if (pr) markers.push(`PR ${pr}`);
 
-  const extras = [
-    "egfr",
-    "alk",
-    "braf",
-    "kras",
-    "pd-l1",
-    "msi-high",
-    "brca1",
-    "brca2",
-    "ros1",
-    "ntrk",
+  // "Triple negative" / TNBC implies the three receptors are negative. Fill in
+  // any not already stated explicitly so the triple-negative eligibility gate
+  // can evaluate from a plain narrative.
+  if (/\btriple[\s\-]?negative\b|\btnbc\b/i.test(lower)) {
+    for (const implied of ["ER negative", "PR negative", "HER2 negative"]) {
+      const base = implied.split(" ")[0].toLowerCase();
+      const already = markers.some(
+        (m) => m.toLowerCase() === base || m.toLowerCase().startsWith(`${base} `)
+      );
+      if (!already) markers.push(implied);
+    }
+  }
+
+  // Token-boundary matches only. A plain includes() let "alk" match inside
+  // "alkaline"/"walk" (phantom ALK driver) and similar substrings elsewhere.
+  const extras: Array<{ id: string; re: RegExp }> = [
+    { id: "EGFR", re: /\begfr\b/i },
+    { id: "ALK", re: /\balk\b/i },
+    { id: "BRAF", re: /\bbraf\b/i },
+    { id: "KRAS", re: /\bkras\b/i },
+    { id: "NRAS", re: /\bnras\b/i },
+    { id: "PD-L1", re: /\bpd[\s\-]?l1\b/i },
+    { id: "MSI-high", re: /\bmsi[\s\-]?high\b/i },
+    { id: "BRCA1", re: /\bbrca1\b/i },
+    { id: "BRCA2", re: /\bbrca2\b/i },
+    { id: "ROS1", re: /\bros1\b/i },
+    { id: "NTRK", re: /\bntrk\b/i },
   ];
 
   for (const marker of extras) {
-    if (lower.includes(marker.replace("-", "")) || lower.includes(marker)) {
-      markers.push(marker.toUpperCase());
-    }
+    if (marker.re.test(lower)) markers.push(marker.id);
   }
 
   return [...new Set(markers)];
