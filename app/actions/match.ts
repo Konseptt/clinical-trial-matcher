@@ -6,6 +6,10 @@ import type { RegistryTrial } from "@/lib/registries/types";
 import { generateSimplifiedTrialGuide } from "@/lib/simplify-trial";
 import { isNvidiaConfigured } from "@/lib/nvidia";
 import { rankMatchedTrials, scoreAllRegistryTrials } from "@/lib/scoring";
+import {
+  runEligibilityPanel,
+  type EligibilityPanelResult,
+} from "@/lib/agents/eligibility-panel";
 import type {
   AppMode,
   MatchResponse,
@@ -155,6 +159,61 @@ export async function getSimplifiedSummaryAction(input: {
       };
     }
     return { error: "Unable to generate the patient summary at this time. Please try again." };
+  }
+}
+
+export async function runEligibilityPanelAction(input: {
+  trialTitle: string;
+  trialSummary: string;
+  trialEligibility: string;
+  trialPhase: string;
+  trialStatus: string;
+  profile: PatientProfile;
+}): Promise<{ result: EligibilityPanelResult } | { error: string }> {
+  const trialTitle = String(input.trialTitle ?? "").trim().slice(0, 500);
+  const trialSummary = String(input.trialSummary ?? "").trim().slice(0, 4000);
+  const trialEligibility = String(input.trialEligibility ?? "").trim().slice(0, 6000);
+
+  if (!trialTitle) {
+    return { error: "Required trial information is unavailable." };
+  }
+
+  if (!isNvidiaConfigured()) {
+    return {
+      error:
+        "Eligibility review panel is unavailable. Configure NVIDIA_API_KEY on the server.",
+    };
+  }
+
+  try {
+    const result = await runEligibilityPanel({
+      trialTitle,
+      trialSummary,
+      trialEligibility,
+      trialPhase: String(input.trialPhase ?? "Not specified").slice(0, 80),
+      trialStatus: String(input.trialStatus ?? "Unknown").slice(0, 80),
+      profile: {
+        primaryDiagnosis: input.profile.primaryDiagnosis,
+        stage: input.profile.stage,
+        age: input.profile.age,
+        sex: input.profile.sex,
+        biomarkers: input.profile.biomarkers.slice(0, 12),
+        priorTreatments: input.profile.priorTreatments.slice(0, 10),
+        location: input.profile.location,
+        hasMetastaticDisease: input.profile.hasMetastaticDisease,
+      },
+    });
+    return { result };
+  } catch (error) {
+    if (error instanceof Error && error.message === "PATIENT_MODE_AI_UNAVAILABLE") {
+      return {
+        error:
+          "Eligibility review panel is unavailable. Configure NVIDIA_API_KEY on the server.",
+      };
+    }
+    return {
+      error: "Unable to run the eligibility review panel at this time. Please try again.",
+    };
   }
 }
 

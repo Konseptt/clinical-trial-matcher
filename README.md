@@ -9,6 +9,7 @@ Unlike other matchers that only tell you what fits *today*, this one also foreca
 ## Features
 
 - **Eligibility Forecast (unique):** A forward-looking readiness timeline. Each trial is labelled `Ready now`, `Eligible ~<date>`, `Action needed`, `Opens later`, or `Likely ineligible`, with the specific blockers and next steps. Projected eligibility dates can be exported as calendar reminders (`.ics`).
+- **Eligibility Review Panel (unique):** An on-demand panel of focused review agents (molecular, treatment history, disease extent, logistics). Each returns a verdict and confidence on a single trial; a coordinator merges them into a consensus that surfaces points of disagreement and questions for the study team. Optional; runs on the configured NVIDIA NIM endpoint.
 - **Patient mode:** Narrative clinical summary with structured extraction (requires NVIDIA API key)
 - **Clinician mode:** Rule-based extraction from chart notes
 - **Registries:** ClinicalTrials.gov, EU-CTR, WHO ICTRP, ISRCTN
@@ -29,6 +30,19 @@ Many trials require a *washout period* (a gap after a prior therapy) before enro
 4. Exports projected eligibility dates as an `.ics` calendar file (with a 7-day advance reminder) so a re-check is never missed.
 
 It is derived entirely from signals already computed during scoring, runs fully client-side, and adds no new data sources. It organizes registry-stated requirements into a personal readiness view; it is **not** medical advice and does not assess true eligibility.
+
+## Eligibility Review Panel
+
+For a deeper, on-demand read on a single trial, the review panel splits the judgment across several focused agents instead of one prompt:
+
+- **Molecular reviewer** looks only at biomarkers and required mutations.
+- **Treatment-history reviewer** looks only at prior lines and washout windows.
+- **Disease-extent reviewer** looks only at stage and metastatic status.
+- **Logistics reviewer** looks only at sites, geography, and recruitment status.
+
+Each returns a verdict (likely eligible, uncertain, likely ineligible), a confidence, a short rationale, and questions. A deterministic coordinator then merges them: it takes the majority verdict, never lets a confident "likely ineligible" be outvoted, and lists conflicts verbatim so disagreement stays visible.
+
+This is decision support, not a verdict. It runs server-side on the configured NVIDIA NIM endpoint (same gating as patient mode); without a key the rest of the app works unchanged.
 
 ## Requirements
 
@@ -108,6 +122,9 @@ flowchart TD
 
   N --> S[Eligibility forecast and readiness timeline]
   S --> T[Export calendar reminders .ics]
+
+  N --> U[Eligibility review panel: focused reviewers]
+  U --> V[Coordinator merges into consensus]
 ```
 
 1. Clinical input is parsed into a structured patient profile
@@ -132,6 +149,7 @@ lib/
   scoring.ts               Match scoring
   eligibility-forecast.ts  Readiness classification + eligibility-date projection
   ics.ts                   Calendar reminder (.ics) export
+  agents/                  Eligibility review panel (focused reviewers + coordinator)
   registries/              Registry connectors
   simplify-trial.ts        Patient-facing trial summaries
 ```

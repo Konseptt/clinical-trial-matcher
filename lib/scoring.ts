@@ -247,7 +247,7 @@ export function hasContradictoryBiomarkers(
  * when the marker is simply absent (status unknown). Only the former is a true
  * eligibility contradiction; penalizing unknowns would demote possibly-eligible
  * trials. Without this a hard inclusion gate the patient fails (e.g. HER2+
- * patient vs a triple-negative trial) could still surface as a strong match —
+ * patient vs a triple-negative trial) could still surface as a strong match,
  * a false-positive eligibility signal.
  */
 export function biomarkerGatePenalty(
@@ -570,6 +570,8 @@ export async function scoreAllRegistryTrials(
       url: trial.url,
       biomarkerGates,
       washoutChecks,
+      // Cap to keep the serialized response small; the panel re-caps anyway.
+      eligibilityText: (trial.eligibilityText || "").slice(0, 4000),
     } satisfies MatchedTrial;
   });
 
@@ -596,6 +598,8 @@ export async function scoreAndRankTrials(
       url: trial.url,
       biomarkerGates,
       washoutChecks,
+      // Cap to keep the serialized response small; the panel re-caps anyway.
+      eligibilityText: (trial.eligibilityText || "").slice(0, 4000),
     } satisfies MatchedTrial;
   });
 

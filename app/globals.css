@@ -439,6 +439,18 @@
     @apply tabular-nums text-faint-muted;
   }
 
+  .verdict-pos {
+    color: var(--color-match-high);
+  }
+
+  .verdict-neutral {
+    color: var(--color-match-mid);
+  }
+
+  .verdict-neg {
+    color: var(--color-match-low);
+  }
+
   .tools-disclosure > summary {
     @apply font-display text-lg text-foreground cursor-pointer list-none
       flex items-center justify-between py-1
@@ -455,7 +467,7 @@
   }
 
   .tools-disclosure[open] > summary::after {
-    content: "–";
+    content: "-";
   }
 }
 

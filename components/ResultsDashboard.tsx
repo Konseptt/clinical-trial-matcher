@@ -3,7 +3,12 @@ import { useState, useEffect, useMemo, useTransition, useRef } from "react";
 import {
   getSimplifiedSummaryAction,
   integrateWhoTrialsAction,
+  runEligibilityPanelAction,
 } from "@/app/actions/match";
+import type {
+  EligibilityPanelResult,
+  ReviewVerdict,
+} from "@/lib/agents/eligibility-panel";
 import { queryWhoIctrpFromBrowser } from "@/lib/registries/who-ictrp-client";
 import {
   escapeCsvCell,
@@ -48,6 +53,24 @@ const READINESS_FILTERS: Array<{ key: "all" | ReadinessStatus; label: string }> 
   { key: "opens-later", label: "Opens later" },
   { key: "likely-ineligible", label: "Re-check" },
 ];
+
+function verdictLabel(v: ReviewVerdict): string {
+  if (v === "likely-eligible") return "Likely eligible";
+  if (v === "likely-ineligible") return "Likely ineligible";
+  return "Uncertain";
+}
+
+function verdictChipClass(v: ReviewVerdict): string {
+  if (v === "likely-eligible") return "readiness-ready";
+  if (v === "likely-ineligible") return "readiness-ineligible";
+  return "readiness-action";
+}
+
+function verdictTextClass(v: ReviewVerdict): string {
+  if (v === "likely-eligible") return "verdict-pos";
+  if (v === "likely-ineligible") return "verdict-neg";
+  return "verdict-neutral";
+}
 
 function readinessChipClass(status: ReadinessStatus): string {
   switch (status) {
@@ -879,7 +902,29 @@ function TrialCard({
   const [simplifyError, setSimplifyError] = useState<string | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [isSimplifying, startSimplify] = useTransition();
+  const [panel, setPanel] = useState<EligibilityPanelResult | null>(null);
+  const [panelError, setPanelError] = useState<string | null>(null);
+  const [isRunningPanel, startPanel] = useTransition();
   const bd = trial.scoreBreakdown;
+
+  const handleRunPanel = () => {
+    setPanelError(null);
+    startPanel(async () => {
+      const result = await runEligibilityPanelAction({
+        trialTitle: trial.title,
+        trialSummary: trial.summary,
+        trialEligibility: trial.eligibilityText ?? "",
+        trialPhase: trial.phase,
+        trialStatus: trial.status,
+        profile,
+      });
+      if ("error" in result) {
+        setPanelError(result.error);
+        return;
+      }
+      setPanel(result.result);
+    });
+  };
 
   const fullSummary = normalizeTrialSummary(trial.summary);
   const isLongSummary = fullSummary.length > TRIAL_SUMMARY_DISPLAY_MAX;
@@ -994,12 +1039,27 @@ function TrialCard({
                     ? "Regenerate summary"
                     : "Generate patient summary"}
               </button>
+              <button
+                type="button"
+                onClick={handleRunPanel}
+                disabled={isRunningPanel}
+                className="btn-ghost text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRunningPanel
+                  ? "Convening review panel"
+                  : panel
+                    ? "Re-run review panel"
+                    : "Run eligibility review panel"}
+              </button>
               {simplifiedGuide && !showOriginalSummary && (
                 <span className="text-xs text-faint font-body">
                   Profile-specific summary; not medical advice
                 </span>
               )}
             </div>
+            {panelError && (
+              <p className="text-xs text-destructive mt-1 font-body">{panelError}</p>
+            )}
             {simplifyError && (
               <p className="text-xs text-destructive mt-1 font-body">{simplifyError}</p>
             )}
@@ -1114,6 +1174,71 @@ function TrialCard({
                     Add calendar reminder
                   </button>
                 )}
+              </div>
+            )}
+
+            {panel && (
+              <div className="mt-5 space-y-3 text-xs">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="guide-heading">Eligibility review panel</p>
+                  <span
+                    className={`readiness-chip ${verdictChipClass(panel.consensus.verdict)}`}
+                  >
+                    <span className="readiness-dot" aria-hidden="true" />
+                    Consensus: {verdictLabel(panel.consensus.verdict)} (
+                    {panel.consensus.confidence}%)
+                  </span>
+                </div>
+                {panel.consensus.conflicts.length > 0 && (
+                  <p className="text-faint">
+                    Split opinion: {panel.consensus.conflicts.join("; ")}.
+                  </p>
+                )}
+                <ul className="space-y-3">
+                  {panel.reviewers.map((r) => (
+                    <li
+                      key={r.id}
+                      className="space-y-1 border-b border-border-subtle pb-3 last:border-0"
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-foreground font-medium">{r.role}</span>
+                        <span className={verdictTextClass(r.verdict)}>
+                          {verdictLabel(r.verdict)} ({r.confidence}%)
+                        </span>
+                      </div>
+                      <p className="text-faint">
+                        {r.focus}.{r.rationale ? ` ${r.rationale}` : ""}
+                      </p>
+                      {r.questions.length > 0 && (
+                        <ul className="space-y-0.5 text-faint pl-3">
+                          {r.questions.map((q, i) => (
+                            <li key={i} className="italic">
+                              {q}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {panel.consensus.questions.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-foreground font-medium">
+                      Questions for the study team
+                    </p>
+                    <ul className="space-y-0.5 text-faint pl-3">
+                      {panel.consensus.questions.map((q, i) => (
+                        <li key={i} className="italic">
+                          {q}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-faint">
+                  Decision support only. Each reviewer judges one axis; confirm
+                  eligibility with the study team.
+                </p>
               </div>
             )}
         </div>

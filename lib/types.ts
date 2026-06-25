@@ -97,6 +97,8 @@ export interface MatchedTrial {
   distance: number | null;
   biomarkerGates?: BiomarkerGate[];
   washoutChecks?: WashoutCheckResult[];
+  /** Capped registry eligibility text, used by the review panel. */
+  eligibilityText?: string;
 }
 
 export interface RegistryQuerySummary {
