@@ -49,6 +49,30 @@ describe("extractPatientProfile receptor polarity (regression)", () => {
   });
 });
 
+describe("extractPatientProfile expanded cancer types", () => {
+  it("recognizes renal cell carcinoma", () => {
+    expect(
+      extractPatientProfile("metastatic renal cell carcinoma").primaryDiagnosis
+    ).toMatch(/renal cell/i);
+  });
+
+  it("recognizes colorectal cancer", () => {
+    expect(
+      extractPatientProfile("stage III colorectal cancer, KRAS wild-type").primaryDiagnosis
+    ).toMatch(/colorectal/i);
+  });
+
+  it("distinguishes non-small cell from small cell lung", () => {
+    expect(
+      extractPatientProfile("non-small cell lung cancer").primaryDiagnosis
+    ).toMatch(/non-small cell lung/i);
+
+    const sclc = extractPatientProfile("small cell lung cancer").primaryDiagnosis;
+    expect(sclc).toMatch(/small cell lung/i);
+    expect(sclc).not.toMatch(/non-small/i);
+  });
+});
+
 describe("extractPatientProfile driver-mutation false positives (regression)", () => {
   it("does not invent ALK from 'alkaline' or 'walk'", () => {
     const p = extractPatientProfile(

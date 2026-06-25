@@ -1,21 +1,41 @@
 import type { PatientProfile } from "./types";
 import { parseLocationFromNotes } from "./location";
 
+// Order matters: more specific terms first so a generic token does not swallow
+// a longer phrase (e.g. "lymphoma" before it, "hodgkin"; "colon" vs
+// "colorectal"). Single-word entries match anywhere in the narrative.
 const CANCER_TYPES = [
   "breast cancer",
+  "non-small cell lung",
+  "small cell lung",
   "lung cancer",
   "melanoma",
-  // More specific terms first: "lymphoma" would otherwise swallow
-  // "non-hodgkin lymphoma" / "hodgkin lymphoma" before they are reached.
   "non-hodgkin",
   "hodgkin",
   "lymphoma",
   "leukemia",
   "glioblastoma",
+  "glioma",
+  "colorectal cancer",
+  "rectal cancer",
   "colon cancer",
   "prostate cancer",
   "ovarian cancer",
   "pancreatic cancer",
+  "hepatocellular",
+  "liver cancer",
+  "renal cell",
+  "kidney cancer",
+  "bladder cancer",
+  "gastric cancer",
+  "stomach cancer",
+  "esophageal cancer",
+  "endometrial cancer",
+  "cervical cancer",
+  "head and neck",
+  "thyroid cancer",
+  "mesothelioma",
+  "sarcoma",
   "nsclc",
   "sclc",
   "multiple myeloma",
