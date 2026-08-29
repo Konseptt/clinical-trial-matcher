@@ -2,43 +2,6 @@ import type { PatientLocation, PatientProfile, TreatmentHistory } from "./types"
 import { parseLocationFromNotes } from "./location";
 import { normalizeCondition } from "./normalization";
 
-const CANCER_TYPES = [
-  "breast cancer",
-  "non-small cell lung",
-  "small cell lung",
-  "lung cancer",
-  "melanoma",
-  "non-hodgkin",
-  "hodgkin",
-  "lymphoma",
-  "leukemia",
-  "glioblastoma",
-  "glioma",
-  "colorectal cancer",
-  "rectal cancer",
-  "colon cancer",
-  "prostate cancer",
-  "ovarian cancer",
-  "pancreatic cancer",
-  "hepatocellular",
-  "liver cancer",
-  "renal cell",
-  "kidney cancer",
-  "bladder cancer",
-  "gastric cancer",
-  "stomach cancer",
-  "esophageal cancer",
-  "endometrial cancer",
-  "cervical cancer",
-  "head and neck",
-  "thyroid cancer",
-  "mesothelioma",
-  "sarcoma",
-  "nsclc",
-  "sclc",
-  "multiple myeloma",
-];
-
 function findFirstMatch(text: string, patterns: RegExp[]): string | null {
   for (const pattern of patterns) {
     const match = text.match(pattern);
