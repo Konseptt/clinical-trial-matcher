@@ -36,10 +36,18 @@ export default function ResultsPage() {
         if (savedProfileJson) {
           const profile = JSON.parse(savedProfileJson) as PatientProfile;
           const result = await getResultsByProfileAction(profile);
-          setData({ ...result, mode: "doctor" });
+          if (!result.success) {
+            setError(result.error);
+            return;
+          }
+          setData({ ...result.data, mode: "doctor" });
         } else if (notes) {
           const result = await getResultsAction(notes, storedMode);
-          setData(result);
+          if (!result.success) {
+            setError(result.error);
+            return;
+          }
+          setData(result.data);
 
           try {
             const history = localStorage.getItem("search_history");
@@ -73,9 +81,13 @@ export default function ResultsPage() {
     startUpdateTransition(async () => {
       try {
         const result = await getResultsByProfileAction(updatedProfile);
+        if (!result.success) {
+          alert(result.error || "Unable to refresh results. Please verify the patient profile fields.");
+          return;
+        }
         // Profile-based search defaults to doctor mode server-side; keep the
         // view's current mode so the label does not silently flip on edit.
-        setData({ ...result, mode });
+        setData({ ...result.data, mode });
       } catch (err) {
         console.error(err);
         alert("Unable to refresh results. Please verify the patient profile fields.");

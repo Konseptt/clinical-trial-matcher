@@ -169,13 +169,14 @@ function normalizeBiomarkers(rawText: string): string[] {
 function extractPriorTreatments(rawText: string): string[] {
   const found = new Set<string>();
   const patterns = [
-    /\b(mastectomy|lumpectomy|chemotherapy|immunotherapy|radiation|radiotherapy|trastuzumab|carboplatin|paclitaxel|pembrolizumab|nivolumab|tamoxifen|anastrozole|surgery|targeted therapy)\b/gi,
+    /\b(mastectomy|lumpectomy|chemotherapy|chemo|immunotherapy|radiation|radiotherapy|trastuzumab|carboplatin|paclitaxel|pembrolizumab|nivolumab|tamoxifen|anastrozole|surgery|targeted therapy)\b/gi,
   ];
 
   for (const pattern of patterns) {
     for (const match of rawText.matchAll(pattern)) {
-      const value = match[1].trim();
-      if (value.length > 2) found.add(value.toLowerCase());
+      let value = match[1].trim().toLowerCase();
+      if (value === "chemo") value = "chemotherapy";
+      if (value.length > 2) found.add(value);
     }
   }
 
@@ -230,7 +231,9 @@ export function extractPatientProfile(rawText: string): PatientProfile {
   const normalizedText = rawText.replace(/\s+/g, " ");
   const text = normalizedText.toLowerCase();
 
-  const ageMatch = text.match(/\b(\d{1,3})[\s-]*(?:year|yr|y\.?o|years old)\b/);
+  const ageMatch =
+    text.match(/\b(\d{1,3})[\s-]*(?:year|yr|y\.?o|years old)\b/) ||
+    text.match(/\b(?:i(?:'m| am)|age[d:]?)\s*(\d{1,3})\b/);
   const age = ageMatch ? Math.min(parseInt(ageMatch[1], 10), 120) : null;
 
   let sex: PatientProfile["sex"] = "unknown";

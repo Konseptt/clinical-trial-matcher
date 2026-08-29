@@ -32,49 +32,64 @@ function dedupeMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
   return Array.from(byKey.values());
 }
 
+export type MatchActionResult =
+  | { success: true; data: MatchResponse }
+  | { success: false; error: string };
+
 export async function getResultsAction(
   notes: string,
   mode: AppMode = "doctor"
-): Promise<MatchResponse> {
+): Promise<MatchActionResult> {
   const trimmedNotes = String(notes ?? "").trim();
   const minLength = mode === "patient" ? 15 : 20;
 
   if (!trimmedNotes || trimmedNotes.length < minLength) {
-    throw new Error(
-      mode === "patient"
-        ? "Please provide a clinical summary of at least 15 characters."
-        : "Please provide clinical notes of at least 20 characters."
-    );
+    return {
+      success: false,
+      error:
+        mode === "patient"
+          ? "Please provide a clinical summary of at least 15 characters."
+          : "Please provide clinical notes of at least 20 characters.",
+    };
   }
 
   if (trimmedNotes.length > 10000) {
-    throw new Error("Input exceeds the 10,000 character limit. Please shorten the entry and resubmit.");
+    return {
+      success: false,
+      error: "Input exceeds the 10,000 character limit. Please shorten the entry and resubmit.",
+    };
   }
 
   try {
-    return await runMatchPipeline(trimmedNotes, mode);
+    const data = await runMatchPipeline(trimmedNotes, mode);
+    return { success: true, data };
   } catch (error) {
-    if (
-      mode === "patient" &&
-      error instanceof Error &&
-      error.message === "PATIENT_MODE_AI_UNAVAILABLE"
-    ) {
-      throw new Error(
-        "Patient mode requires NVIDIA_API_KEY on the server. Use Clinician mode without it."
-      );
-    }
-
     console.error("Clinical trial match pipeline failure:", error);
-    throw new Error("The trial search could not be completed at this time.");
+    return {
+      success: false,
+      error:
+        error instanceof Error && error.message
+          ? error.message
+          : "The trial search could not be completed at this time.",
+    };
   }
 }
 
-export async function getResultsByProfileAction(profile: PatientProfile): Promise<MatchResponse> {
+export async function getResultsByProfileAction(
+  profile: PatientProfile
+): Promise<MatchActionResult> {
   try {
-    return await runMatchPipelineByProfile(profile);
+    const data = await runMatchPipelineByProfile(profile);
+    return { success: true, data };
   } catch (error) {
     console.error("Clinical trial match by profile failure:", error);
-    throw new Error("The trial search could not be completed at this time.");
+    return {
+      success: false,
+      error:
+        error instanceof Error && error.message
+          ? error.message
+          : "The trial search could not be completed at this time.",
+    };
   }
 }
 
@@ -83,31 +98,36 @@ export async function integrateWhoTrialsAction(
   profile: PatientProfile,
   existing: MatchResponse
 ): Promise<MatchResponse> {
-  const filtered = applyTrialFilters(whoTrials, {
-    location: profile.location,
-    prioritizePhaseTwoPlus: true,
-  });
+  try {
+    const filtered = applyTrialFilters(whoTrials, {
+      location: profile.location,
+      prioritizePhaseTwoPlus: true,
+    });
 
-  const scoredWho = await scoreAllRegistryTrials(filtered, profile);
-  const mergedTrials = rankMatchedTrials(
-    dedupeMatchedTrials([...existing.trials, ...scoredWho])
-  );
+    const scoredWho = await scoreAllRegistryTrials(filtered, profile);
+    const mergedTrials = rankMatchedTrials(
+      dedupeMatchedTrials([...existing.trials, ...scoredWho])
+    );
 
-  const registrySummaries = existing.registrySummaries.map((summary) =>
-    summary.registry === "WHO ICTRP"
-      ? {
-          ...summary,
-          trialCount: whoTrials.length,
-          error: undefined,
-        }
-      : summary
-  );
+    const registrySummaries = existing.registrySummaries.map((summary) =>
+      summary.registry === "WHO ICTRP"
+        ? {
+            ...summary,
+            trialCount: whoTrials.length,
+            error: undefined,
+          }
+        : summary
+    );
 
-  return {
-    ...existing,
-    trials: mergedTrials,
-    registrySummaries,
-  };
+    return {
+      ...existing,
+      trials: mergedTrials,
+      registrySummaries,
+    };
+  } catch (error) {
+    console.error("integrateWhoTrialsAction failure:", error);
+    return existing;
+  }
 }
 
 export async function getSimplifiedSummaryAction(input: {
@@ -128,7 +148,7 @@ export async function getSimplifiedSummaryAction(input: {
   if (!isNvidiaConfigured()) {
     return {
       error:
-        "Patient-facing summaries are unavailable. Configure NVIDIA_API_KEY on the server.",
+        "Patient-facing summaries require NVIDIA_API_KEY to be configured on the server.",
     };
   }
 
@@ -155,7 +175,7 @@ export async function getSimplifiedSummaryAction(input: {
     if (error instanceof Error && error.message === "PATIENT_MODE_AI_UNAVAILABLE") {
       return {
         error:
-          "Patient-facing summaries are unavailable. Configure NVIDIA_API_KEY on the server.",
+          "Patient-facing summaries require NVIDIA_API_KEY to be configured on the server.",
       };
     }
     return { error: "Unable to generate the patient summary at this time. Please try again." };
@@ -181,7 +201,7 @@ export async function runEligibilityPanelAction(input: {
   if (!isNvidiaConfigured()) {
     return {
       error:
-        "Eligibility review panel is unavailable. Configure NVIDIA_API_KEY on the server.",
+        "Eligibility review panel requires NVIDIA_API_KEY to be configured on the server.",
     };
   }
 
@@ -208,7 +228,7 @@ export async function runEligibilityPanelAction(input: {
     if (error instanceof Error && error.message === "PATIENT_MODE_AI_UNAVAILABLE") {
       return {
         error:
-          "Eligibility review panel is unavailable. Configure NVIDIA_API_KEY on the server.",
+          "Eligibility review panel requires NVIDIA_API_KEY to be configured on the server.",
       };
     }
     return {
@@ -216,4 +236,3 @@ export async function runEligibilityPanelAction(input: {
     };
   }
 }
-

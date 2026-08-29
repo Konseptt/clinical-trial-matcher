@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractPatientProfile } from "@/lib/extract";
+import { extractPatientProfilePatientMode } from "@/lib/extract-ai";
 
 describe("extractPatientProfile biomarkers", () => {
   it("emits a single canonical PD-L1 marker (no PDL1/PD-L1 duplicate)", () => {
@@ -86,3 +87,25 @@ describe("extractPatientProfile driver-mutation false positives (regression)", (
     expect(p.biomarkers).toContain("ALK");
   });
 });
+
+describe("extractPatientProfilePatientMode fallback", () => {
+  it("extracts patient profile gracefully without throwing when NVIDIA_API_KEY is unset", async () => {
+    const prev = process.env.NVIDIA_API_KEY;
+    delete process.env.NVIDIA_API_KEY;
+    try {
+      const p = await extractPatientProfilePatientMode(
+        "I'm 58 and live near Boston. I have stage III HER2-positive breast cancer. I had surgery, chemo, and trastuzumab."
+      );
+      expect(p.age).toBe(58);
+      expect(p.primaryDiagnosis).toMatch(/breast cancer/i);
+      expect(p.stage).toBe("III");
+      expect(p.biomarkers).toContain("HER2 positive");
+      expect(p.priorTreatments).toEqual(
+        expect.arrayContaining(["Surgery", "Chemotherapy", "Trastuzumab"])
+      );
+    } finally {
+      if (prev !== undefined) process.env.NVIDIA_API_KEY = prev;
+    }
+  });
+});
+

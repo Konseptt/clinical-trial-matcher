@@ -127,19 +127,24 @@ async function extractProfileWithPrompt(
   const fallback = extractPatientProfile(rawText);
 
   if (!isNvidiaConfigured()) {
-    throw new Error("PATIENT_MODE_AI_UNAVAILABLE");
+    return fallback;
   }
 
-  const content = await nvidiaChatCompletion({
-    maxTokens: 1200,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  });
+  try {
+    const content = await nvidiaChatCompletion({
+      maxTokens: 1200,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    });
 
-  const parsed = extractJsonObject(content);
-  return coercePatientProfile(parsed, fallback);
+    const parsed = extractJsonObject(content);
+    return coercePatientProfile(parsed, fallback);
+  } catch (error) {
+    console.warn("AI extraction fallback triggered:", error);
+    return fallback;
+  }
 }
 
 export async function extractPatientProfilePatientMode(
