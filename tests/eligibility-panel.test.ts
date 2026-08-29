@@ -108,29 +108,76 @@ describe("extractJsonObject", () => {
 });
 
 describe("runEligibilityPanel without a configured endpoint", () => {
-  it("degrades gracefully (throws a known marker, no crash)", async () => {
+  it("falls back to a deterministic panel with all four reviewer axes", async () => {
     const prev = process.env.NVIDIA_API_KEY;
     process.env.NVIDIA_API_KEY = ""; // force "not configured" regardless of env
     try {
-      await expect(
-        runEligibilityPanel({
-          trialTitle: "T",
-          trialSummary: "S",
-          trialEligibility: "E",
-          trialPhase: "Phase 2",
-          trialStatus: "Recruiting",
-          profile: {
-            primaryDiagnosis: "breast cancer",
-            stage: null,
-            age: 55,
-            sex: "female",
-            biomarkers: [],
-            priorTreatments: [],
-            location: null,
-            hasMetastaticDisease: null,
-          },
-        })
-      ).rejects.toThrow("PATIENT_MODE_AI_UNAVAILABLE");
+      const result = await runEligibilityPanel({
+        trialTitle: "T",
+        trialSummary: "S",
+        trialEligibility: "E",
+        trialPhase: "Phase 2",
+        trialStatus: "Recruiting",
+        profile: {
+          primaryDiagnosis: "breast cancer",
+          stage: null,
+          age: 55,
+          sex: "female",
+          biomarkers: [],
+          priorTreatments: [],
+          location: null,
+          hasMetastaticDisease: null,
+        },
+      });
+      expect(result.reviewers).toHaveLength(4);
+      expect(result.reviewers.map((r) => r.id)).toEqual([
+        "molecular",
+        "treatment",
+        "disease",
+        "logistics",
+      ]);
+      for (const reviewer of result.reviewers) {
+        expect(reviewer.rationale.length).toBeGreaterThan(0);
+        expect(reviewer.confidence).toBeGreaterThanOrEqual(0);
+        expect(reviewer.confidence).toBeLessThanOrEqual(100);
+      }
+      // Recruiting trial: logistics axis should read as open to enrollment.
+      const logistics = result.reviewers.find((r) => r.id === "logistics");
+      expect(logistics?.verdict).toBe("likely-eligible");
+      expect(result.consensus.verdict).toBeDefined();
+      expect(result.consensus.questions.length).toBeGreaterThan(0);
+    } finally {
+      if (prev === undefined) delete process.env.NVIDIA_API_KEY;
+      else process.env.NVIDIA_API_KEY = prev;
+    }
+  });
+
+  it("flags a metastatic-only trial as likely ineligible for a non-metastatic profile", async () => {
+    const prev = process.env.NVIDIA_API_KEY;
+    process.env.NVIDIA_API_KEY = "";
+    try {
+      const result = await runEligibilityPanel({
+        trialTitle: "Trial for metastatic breast cancer",
+        trialSummary: "Patients with metastatic disease",
+        trialEligibility: "Must have metastatic breast cancer",
+        trialPhase: "Phase 3",
+        trialStatus: "Completed",
+        profile: {
+          primaryDiagnosis: "breast cancer",
+          stage: "II",
+          age: 48,
+          sex: "female",
+          biomarkers: [],
+          priorTreatments: [],
+          location: null,
+          hasMetastaticDisease: false,
+        },
+      });
+      const disease = result.reviewers.find((r) => r.id === "disease");
+      expect(disease?.verdict).toBe("likely-ineligible");
+      const logistics = result.reviewers.find((r) => r.id === "logistics");
+      expect(logistics?.verdict).toBe("likely-ineligible");
+      expect(result.consensus.verdict).toBe("likely-ineligible");
     } finally {
       if (prev === undefined) delete process.env.NVIDIA_API_KEY;
       else process.env.NVIDIA_API_KEY = prev;

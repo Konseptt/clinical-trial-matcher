@@ -306,11 +306,128 @@ ${OPINION_SCHEMA}`,
   return coerceOpinion(spec, extractJsonObject(content));
 }
 
+/**
+ * Deterministic panel built from rule-based checks against the registry text.
+ * Used whenever the AI endpoint is unconfigured or every reviewer call fails,
+ * so the panel always returns a structured result.
+ */
+export function generateDeterministicEligibilityPanel(
+  input: PanelInput
+): EligibilityPanelResult {
+  const p = input.profile;
+  const trialText =
+    `${input.trialTitle} ${input.trialSummary} ${input.trialEligibility}`.toLowerCase();
+
+  // Molecular axis
+  let molecular: ReviewerOpinion;
+  if (p.biomarkers.length === 0) {
+    molecular = {
+      id: "molecular",
+      role: "Molecular reviewer",
+      focus: "Biomarkers and required mutations",
+      verdict: "uncertain",
+      confidence: 40,
+      rationale:
+        "No biomarkers are stated in the profile, so molecular requirements cannot be checked.",
+      questions: ["Which biomarker or mutation results does this study require?"],
+    };
+  } else {
+    const mentioned = p.biomarkers.filter((m) =>
+      trialText.includes(m.toLowerCase().split(" ")[0])
+    );
+    molecular = {
+      id: "molecular",
+      role: "Molecular reviewer",
+      focus: "Biomarkers and required mutations",
+      verdict: mentioned.length > 0 ? "likely-eligible" : "uncertain",
+      confidence: mentioned.length > 0 ? 65 : 45,
+      rationale:
+        mentioned.length > 0
+          ? `The trial text references ${mentioned.join(", ")}, which appears in the patient profile.`
+          : "The stated biomarkers are not mentioned in the trial text, so molecular fit is unclear.",
+      questions: ["Are there biomarker thresholds or assays the study requires?"],
+    };
+  }
+
+  // Treatment-history axis
+  const treatmentsInText = p.priorTreatments.filter((t) =>
+    trialText.includes(t.toLowerCase())
+  );
+  const treatment: ReviewerOpinion = {
+    id: "treatment",
+    role: "Treatment-history reviewer",
+    focus: "Prior lines and washout",
+    verdict: "uncertain",
+    confidence: treatmentsInText.length > 0 ? 55 : 45,
+    rationale:
+      treatmentsInText.length > 0
+        ? `The eligibility text mentions ${treatmentsInText.join(", ")}; washout or exclusion rules for these therapies need confirmation.`
+        : p.priorTreatments.length > 0
+          ? "Prior therapies are stated but the trial text does not spell out their washout rules."
+          : "No prior treatments are stated, so treatment-history requirements cannot be checked.",
+    questions: [
+      p.priorTreatments.length > 0
+        ? `Do prior treatments (${p.priorTreatments.slice(0, 4).join(", ")}) require a washout period before enrollment?`
+        : "Does the study require or exclude specific prior therapies?",
+    ],
+  };
+
+  // Disease-extent axis
+  const metastaticRequired = /\bmetastatic\b|\bstage iv\b/.test(trialText);
+  let disease: ReviewerOpinion;
+  if (metastaticRequired && p.hasMetastaticDisease === false) {
+    disease = {
+      id: "disease",
+      role: "Disease-extent reviewer",
+      focus: "Stage and metastatic status",
+      verdict: "likely-ineligible",
+      confidence: 70,
+      rationale:
+        "The trial text references metastatic disease, but the profile documents no metastatic disease.",
+      questions: ["Does the study accept non-metastatic patients in any cohort?"],
+    };
+  } else {
+    const stageMatched = Boolean(p.stage && trialText.includes(p.stage.toLowerCase()));
+    disease = {
+      id: "disease",
+      role: "Disease-extent reviewer",
+      focus: "Stage and metastatic status",
+      verdict: stageMatched ? "likely-eligible" : "uncertain",
+      confidence: stageMatched ? 65 : 50,
+      rationale: stageMatched
+        ? `The trial text references stage ${p.stage}, matching the profile.`
+        : "Stage and disease-extent requirements are not explicit in the trial text.",
+      questions: ["What disease stage or activity level does the protocol require?"],
+    };
+  }
+
+  // Logistics axis
+  const status = input.trialStatus.trim().toUpperCase().replace(/_/g, " ");
+  const notYet = status.includes("NOT YET");
+  const recruiting = !notYet && /RECRUIT|ONGOING|AUTHORI|OPEN|ENROLL/.test(status);
+  const logistics: ReviewerOpinion = {
+    id: "logistics",
+    role: "Logistics reviewer",
+    focus: "Sites, geography, recruitment",
+    verdict: recruiting ? "likely-eligible" : notYet ? "uncertain" : "likely-ineligible",
+    confidence: recruiting ? 70 : notYet ? 50 : 65,
+    rationale: recruiting
+      ? "The study is listed as open to enrollment."
+      : notYet
+        ? "The study is not yet recruiting; enrollment is not open today."
+        : `The study status (${input.trialStatus}) does not indicate open enrollment.`,
+    questions: ["Which site is nearest, and is it actively enrolling?"],
+  };
+
+  const reviewers = [molecular, treatment, disease, logistics];
+  return { reviewers, consensus: deriveConsensus(reviewers) };
+}
+
 export async function runEligibilityPanel(
   input: PanelInput
 ): Promise<EligibilityPanelResult> {
   if (!isNvidiaConfigured()) {
-    throw new Error("PATIENT_MODE_AI_UNAVAILABLE");
+    return generateDeterministicEligibilityPanel(input);
   }
 
   const context = buildContext(input);
@@ -326,7 +443,7 @@ export async function runEligibilityPanel(
     .map((r) => r.value);
 
   if (reviewers.length === 0) {
-    throw new Error("Eligibility review panel returned no opinions");
+    return generateDeterministicEligibilityPanel(input);
   }
 
   return { reviewers, consensus: deriveConsensus(reviewers) };

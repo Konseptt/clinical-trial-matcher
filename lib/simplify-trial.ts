@@ -111,13 +111,77 @@ const GUIDE_JSON_SCHEMA = `{
   "askYourDoctor": ["2 consultation questions specific to this patient and trial"]
 }`;
 
+/**
+ * Deterministic guide built from registry data alone. Used whenever the AI
+ * endpoint is unconfigured or fails, so the button always produces a result.
+ */
+export function generateDeterministicSimplifiedTrialGuide(
+  input: SimplifyTrialInput
+): SimplifiedTrialGuide {
+  const { profile } = input;
+  const title = stripEmDashes(input.trialTitle.trim());
+  const firstSentence =
+    stripEmDashes(input.trialSummary.trim()).split(/(?<=[.!?])\s+/)[0] ?? "";
+
+  const headline =
+    firstSentence.length > 20 && firstSentence.length < 220
+      ? firstSentence
+      : `This study, "${title.slice(0, 120)}", is evaluating a treatment approach for patients with ${profile.primaryDiagnosis}.`;
+
+  const goodFitParts = [
+    `This trial was matched because it targets ${profile.primaryDiagnosis}`,
+  ];
+  if (profile.biomarkers.length > 0) {
+    goodFitParts.push(
+      `and your profile lists ${profile.biomarkers.slice(0, 3).join(", ")}`
+    );
+  }
+  const goodFit = `${goodFitParts.join(" ")}. Final eligibility depends on criteria only the study team can confirm.`;
+
+  const studyBasics = [
+    input.trialPhase && input.trialPhase !== "Not specified"
+      ? `Study phase: ${input.trialPhase}`
+      : "Study phase not specified in the registry record",
+    `Recruitment status: ${input.trialStatus || "Unknown"}`,
+    `Estimated match to your profile: ${input.matchScore}% (algorithmic estimate, not a guarantee)`,
+  ];
+
+  const whatToExpect = [
+    "Screening visits to confirm eligibility, typically including blood work and a medical history review",
+    "Regular study visits for monitoring; frequency and duration are listed in the full registry record",
+  ];
+
+  const goodToKnow =
+    "This summary was generated from the public registry record without AI assistance; review the full record and confirm all criteria with the study team.";
+
+  const askYourDoctor = [
+    `Does my ${profile.primaryDiagnosis} history meet this study's entry criteria?`,
+    profile.priorTreatments.length > 0
+      ? `Do my prior treatments (${profile.priorTreatments.slice(0, 4).join(", ")}) affect my eligibility or require a washout period?`
+      : "Are there prior-treatment or washout requirements I should know about?",
+  ];
+
+  return { headline, goodFit, studyBasics, whatToExpect, goodToKnow, askYourDoctor };
+}
+
 export async function generateSimplifiedTrialGuide(
   input: SimplifyTrialInput
 ): Promise<SimplifiedTrialGuide> {
   if (!isNvidiaConfigured()) {
-    throw new Error("PATIENT_MODE_AI_UNAVAILABLE");
+    return generateDeterministicSimplifiedTrialGuide(input);
   }
 
+  try {
+    return await generateAiTrialGuide(input);
+  } catch (error) {
+    console.warn("AI trial guide failed, using deterministic fallback:", error);
+    return generateDeterministicSimplifiedTrialGuide(input);
+  }
+}
+
+async function generateAiTrialGuide(
+  input: SimplifyTrialInput
+): Promise<SimplifiedTrialGuide> {
   const content = await nvidiaChatCompletion({
     maxTokens: 750,
     temperature: 0.25,

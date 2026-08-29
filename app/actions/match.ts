@@ -4,7 +4,6 @@ import { runMatchPipeline, runMatchPipelineByProfile } from "@/lib/match";
 import { applyTrialFilters } from "@/lib/registries/filters";
 import type { RegistryTrial } from "@/lib/registries/types";
 import { generateSimplifiedTrialGuide } from "@/lib/simplify-trial";
-import { isNvidiaConfigured } from "@/lib/nvidia";
 import { rankMatchedTrials, scoreAllRegistryTrials } from "@/lib/scoring";
 import {
   runEligibilityPanel,
@@ -145,13 +144,6 @@ export async function getSimplifiedSummaryAction(input: {
     return { error: "Required trial information is unavailable." };
   }
 
-  if (!isNvidiaConfigured()) {
-    return {
-      error:
-        "Patient-facing summaries require NVIDIA_API_KEY to be configured on the server.",
-    };
-  }
-
   try {
     const guide = await generateSimplifiedTrialGuide({
       trialTitle,
@@ -172,12 +164,7 @@ export async function getSimplifiedSummaryAction(input: {
 
     return { guide };
   } catch (error) {
-    if (error instanceof Error && error.message === "PATIENT_MODE_AI_UNAVAILABLE") {
-      return {
-        error:
-          "Patient-facing summaries require NVIDIA_API_KEY to be configured on the server.",
-      };
-    }
+    console.error("getSimplifiedSummaryAction failure:", error);
     return { error: "Unable to generate the patient summary at this time. Please try again." };
   }
 }
@@ -196,13 +183,6 @@ export async function runEligibilityPanelAction(input: {
 
   if (!trialTitle) {
     return { error: "Required trial information is unavailable." };
-  }
-
-  if (!isNvidiaConfigured()) {
-    return {
-      error:
-        "Eligibility review panel requires NVIDIA_API_KEY to be configured on the server.",
-    };
   }
 
   try {
@@ -225,12 +205,7 @@ export async function runEligibilityPanelAction(input: {
     });
     return { result };
   } catch (error) {
-    if (error instanceof Error && error.message === "PATIENT_MODE_AI_UNAVAILABLE") {
-      return {
-        error:
-          "Eligibility review panel requires NVIDIA_API_KEY to be configured on the server.",
-      };
-    }
+    console.error("runEligibilityPanelAction failure:", error);
     return {
       error: "Unable to run the eligibility review panel at this time. Please try again.",
     };
