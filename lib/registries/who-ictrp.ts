@@ -11,6 +11,9 @@ function sanitizeQueryParam(val: string): string {
 }
 
 function buildSearchQuery(params: RegistrySearchParams): string {
+  const cleanCond = sanitizeQueryParam(params.condition);
+  if (cleanCond) return cleanCond;
+
   const terms = params.terms
     .map(sanitizeQueryParam)
     .filter(Boolean)
@@ -20,7 +23,7 @@ function buildSearchQuery(params: RegistrySearchParams): string {
     return terms.join(" ");
   }
 
-  return sanitizeQueryParam(params.condition) || "cancer";
+  return "clinical trial";
 }
 
 async function postWhoSearch(

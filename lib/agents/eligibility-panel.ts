@@ -274,7 +274,7 @@ async function runReviewer(
     messages: [
       {
         role: "system",
-        content: `You are one reviewer on an oncology trial eligibility panel. ${spec.instruction}
+        content: `You are one reviewer on a multidisciplinary clinical trial eligibility panel. ${spec.instruction}
 Rules:
 - Stay strictly within your assigned axis. Defer other axes to other reviewers.
 - Do not use em dashes or en dashes. Use commas or periods.

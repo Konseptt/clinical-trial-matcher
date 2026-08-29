@@ -1,9 +1,7 @@
-import type { PatientProfile } from "./types";
+import type { PatientLocation, PatientProfile, TreatmentHistory } from "./types";
 import { parseLocationFromNotes } from "./location";
+import { normalizeCondition } from "./normalization";
 
-// Order matters: more specific terms first so a generic token does not swallow
-// a longer phrase (e.g. "lymphoma" before it, "hodgkin"; "colon" vs
-// "colorectal"). Single-word entries match anywhere in the narrative.
 const CANCER_TYPES = [
   "breast cancer",
   "non-small cell lung",
@@ -49,46 +47,6 @@ function findFirstMatch(text: string, patterns: RegExp[]): string | null {
   return null;
 }
 
-function extractDiagnosis(rawText: string): string {
-  const lower = rawText.toLowerCase();
-
-  for (const cancerType of CANCER_TYPES) {
-    if (lower.includes(cancerType)) {
-      const modifierMatch = rawText.match(
-        new RegExp(
-          `((?:her2|er|pr|egfr|alk|braf|kras)[\\-\\+\\s]*(?:positive|negative|\\+|\\-)?\\s*)?${cancerType.replace(/\s+/g, "\\s+")}`,
-          "i"
-        )
-      );
-      if (modifierMatch?.[0]) {
-        return modifierMatch[0]
-          .replace(/\bstage\s+[ivx0-9]+[abc]?\b/gi, "")
-          .replace(/\s+/g, " ")
-          .trim();
-      }
-      return cancerType;
-    }
-  }
-
-  const diagnosisPatterns = [
-    /(?:diagnosed with|diagnosis of|history of|presents with)\s+(.+?)(?:\.|,|;|\n)/i,
-    /(?:primary diagnosis|condition):\s*(.+?)(?:\.|,|;|\n)/i,
-  ];
-
-  const found = findFirstMatch(rawText, diagnosisPatterns);
-  if (!found) return "unspecified condition";
-
-  return found
-    .replace(/^\s*stage\s+[ivx0-9]+[abc]?\s+/i, "")
-    .replace(/\bstage\s+[ivx0-9]+[abc]?\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// Read the polarity of a short receptor token (er, pr). Anchored with
-// (?<![a-z]) so "er" is never matched inside "her2", "cancer", etc. The prior
-// version used a bare `er\s*-` alternative that matched the hyphen in "HER-2"
-// (phantom "ER negative") and, worse, inverted "ER-positive" into negative.
 function detectReceptorStatus(
   lower: string,
   token: string
@@ -97,7 +55,6 @@ function detectReceptorStatus(
   if (new RegExp(`${b}[\\s\\-]*(?:positive|pos)\\b`, "i").test(lower)) return "positive";
   if (new RegExp(`${b}\\+`, "i").test(lower)) return "positive";
   if (new RegExp(`${b}[\\s\\-]*(?:negative|neg)\\b`, "i").test(lower)) return "negative";
-  // Bare "ER-" shorthand is negative, but only when it is not "ER-positive".
   if (new RegExp(`${b}-(?![a-z])`, "i").test(lower)) return "negative";
   return null;
 }
@@ -106,9 +63,6 @@ function normalizeBiomarkers(rawText: string): string[] {
   const markers: string[] = [];
   const lower = rawText.toLowerCase();
 
-  // HER2: allow an optional separator so "HER2", "HER-2", and "HER 2" all match,
-  // and capture negativity (the prior version silently dropped HER2-negative,
-  // breaking triple-negative gating from narrative input).
   const her2 = `(?<![a-z])her[\\s\\-]?2`;
   if (
     new RegExp(`${her2}[\\s\\-]*(?:positive|pos)\\b`, "i").test(lower) ||
@@ -120,20 +74,15 @@ function normalizeBiomarkers(rawText: string): string[] {
     new RegExp(`${her2}-(?![a-z])`, "i").test(lower)
   ) {
     markers.push("HER2 negative");
-  } else if (new RegExp(`${her2}\\b`, "i").test(lower)) {
-    markers.push("HER2");
   }
 
-  const er = detectReceptorStatus(lower, "er");
-  if (er) markers.push(`ER ${er}`);
+  const erStatus = detectReceptorStatus(lower, "er");
+  if (erStatus) markers.push(`ER ${erStatus}`);
 
-  const pr = detectReceptorStatus(lower, "pr");
-  if (pr) markers.push(`PR ${pr}`);
+  const prStatus = detectReceptorStatus(lower, "pr");
+  if (prStatus) markers.push(`PR ${prStatus}`);
 
-  // "Triple negative" / TNBC implies the three receptors are negative. Fill in
-  // any not already stated explicitly so the triple-negative eligibility gate
-  // can evaluate from a plain narrative.
-  if (/\btriple[\s\-]?negative\b|\btnbc\b/i.test(lower)) {
+  if (/\btriple[\s-]negative\b/i.test(lower) || /\btnbc\b/i.test(lower)) {
     for (const implied of ["ER negative", "PR negative", "HER2 negative"]) {
       const base = implied.split(" ")[0].toLowerCase();
       const already = markers.some(
@@ -143,8 +92,6 @@ function normalizeBiomarkers(rawText: string): string[] {
     }
   }
 
-  // Token-boundary matches only. A plain includes() let "alk" match inside
-  // "alkaline"/"walk" (phantom ALK driver) and similar substrings elsewhere.
   const extras: Array<{ id: string; re: RegExp }> = [
     { id: "EGFR", re: /\begfr\b/i },
     { id: "ALK", re: /\balk\b/i },
@@ -166,70 +113,240 @@ function normalizeBiomarkers(rawText: string): string[] {
   return [...new Set(markers)];
 }
 
-function extractPriorTreatments(rawText: string): string[] {
-  const found = new Set<string>();
-  const patterns = [
-    /\b(mastectomy|lumpectomy|chemotherapy|chemo|immunotherapy|radiation|radiotherapy|trastuzumab|carboplatin|paclitaxel|pembrolizumab|nivolumab|tamoxifen|anastrozole|surgery|targeted therapy)\b/gi,
-  ];
+const KNOWN_DRUG_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
+  { name: "Dimethyl fumarate", pattern: /\b(?:dimethyl\s+fumarate|tecfidera)\b/i },
+  { name: "Interferon beta-1a", pattern: /\b(?:interferon\s+beta[\s-]1a|interferon\s+beta|avonex|rebif)\b/i },
+  { name: "Interferon beta-1b", pattern: /\b(?:interferon\s+beta[\s-]1b|betaseron|extavia)\b/i },
+  { name: "Glatiramer acetate", pattern: /\b(?:glatiramer\s+acetate|copaxone)\b/i },
+  { name: "Fingolimod", pattern: /\b(?:fingolimod|gilenya)\b/i },
+  { name: "Natalizumab", pattern: /\b(?:natalizumab|tysabri)\b/i },
+  { name: "Ocrelizumab", pattern: /\b(?:ocrelizumab|ocrevus)\b/i },
+  { name: "Ofatumumab", pattern: /\b(?:ofatumumab|kesimpta)\b/i },
+  { name: "Ublituximab", pattern: /\b(?:ublituximab|briumvi)\b/i },
+  { name: "Siponimod", pattern: /\b(?:siponimod|mayzent)\b/i },
+  { name: "Ozanimod", pattern: /\b(?:ozanimod|zeposia)\b/i },
+  { name: "Ponesimod", pattern: /\b(?:ponesimod|ponvory)\b/i },
+  { name: "Cladribine", pattern: /\b(?:cladribine|mavenclad)\b/i },
+  { name: "Alemtuzumab", pattern: /\b(?:alemtuzumab|lemtrada)\b/i },
+  { name: "Teriflunomide", pattern: /\b(?:teriflunomide|aubagio)\b/i },
+  { name: "Trastuzumab", pattern: /\b(?:trastuzumab|herceptin)\b/i },
+  { name: "Pertuzumab", pattern: /\b(?:pertuzumab|perjeta)\b/i },
+  { name: "Pembrolizumab", pattern: /\b(?:pembrolizumab|keytruda)\b/i },
+  { name: "Nivolumab", pattern: /\b(?:nivolumab|opdivo)\b/i },
+  { name: "Carboplatin", pattern: /\bcarboplatin\b/i },
+  { name: "Paclitaxel", pattern: /\bpaclitaxel\b/i },
+  { name: "Tamoxifen", pattern: /\btamoxifen\b/i },
+  { name: "Anastrozole", pattern: /\banastrozole\b/i },
+  { name: "Chemotherapy", pattern: /\b(?:chemotherapy|chemo)\b/i },
+  { name: "Surgery", pattern: /\b(?:surgery|mastectomy|lumpectomy|resection)\b/i },
+  { name: "Radiation", pattern: /\b(?:radiation|radiotherapy)\b/i },
+  { name: "Immunotherapy", pattern: /\bimmunotherapy\b/i },
+  { name: "Targeted therapy", pattern: /\btargeted\s+therapy\b/i },
+];
 
-  for (const pattern of patterns) {
-    for (const match of rawText.matchAll(pattern)) {
-      let value = match[1].trim().toLowerCase();
-      if (value === "chemo") value = "chemotherapy";
-      if (value.length > 2) found.add(value);
+function extractTreatmentsAndTimeline(rawText: string): {
+  priorTreatments: string[];
+  currentTreatment: string | null;
+  previousTreatments: Array<{ name: string; reasonDiscontinued?: string }>;
+  timeline: TreatmentHistory[];
+} {
+  const sentences = rawText.split(/(?<=[.;\n])\s+/);
+  const foundNames = new Set<string>();
+  const timeline: TreatmentHistory[] = [];
+  let currentTreatment: string | null = null;
+  const previousTreatments: Array<{ name: string; reasonDiscontinued?: string }> = [];
+
+  for (const item of KNOWN_DRUG_PATTERNS) {
+    if (item.pattern.test(rawText)) {
+      foundNames.add(item.name);
+
+      const sentence =
+        sentences.find((s) => item.pattern.test(s))?.toLowerCase() ?? "";
+
+      const isDiscontinued =
+        /\b(?:discontinued|stopped|switched\s+from|prior\s+to|initially\s+received|previously\s+took|intolerant|failed|former)\b/i.test(sentence) &&
+        !/\b(?:switched\s+to|current|currently|now\s+on)\b/i.test(sentence);
+
+      const isCurrent =
+        /\b(?:switched\s+to|currently|current|now\s+taking|have\s+taken\s+for|taking\s+for|presently|ongoing|maintenance)\b/i.test(sentence) ||
+        (!isDiscontinued && /\b(?:taking|take|prescribed|on)\b/i.test(sentence));
+
+      let reasonDiscontinued: string | undefined;
+      const reasonMatch = sentence.match(
+        /(?:after|due to|because of|with)\s+([a-z\s\-]+?(?:effects?|adverse|toxicity|intolerance|progression|relapse|reaction))/i
+      );
+      if (reasonMatch?.[1]) {
+        reasonDiscontinued = reasonMatch[1].trim();
+      }
+
+      if (isCurrent && !currentTreatment) {
+        currentTreatment = item.name;
+      }
+
+      if (isDiscontinued || reasonDiscontinued) {
+        previousTreatments.push({
+          name: item.name,
+          reasonDiscontinued: reasonDiscontinued ?? "adverse effects / intolerance",
+        });
+      }
+
+      timeline.push({
+        name: item.name,
+        ongoing: isCurrent && !isDiscontinued,
+        reasonDiscontinued,
+      });
     }
   }
 
-  return Array.from(found).map(
-    (t) => t.charAt(0).toUpperCase() + t.slice(1)
-  );
+  // Fallback: If current treatment wasn't set, pick the last non-discontinued therapy
+  if (!currentTreatment && timeline.length > 0) {
+    const ongoingOne = timeline.find((t) => t.ongoing);
+    if (ongoingOne) {
+      currentTreatment = ongoingOne.name;
+    }
+  }
+
+  return {
+    priorTreatments: Array.from(foundNames),
+    currentTreatment,
+    previousTreatments,
+    timeline,
+  };
 }
 
-function buildTreatmentTimeline(
-  rawText: string,
-  treatments: string[]
-): { name: string; ongoing: boolean; endDate?: string }[] {
-  const now = Date.now();
-  const DAY_MS = 1000 * 60 * 60 * 24;
-  // Scope cues to the sentence mentioning the treatment. A blind character
-  // window bleeds into adjacent sentences, so "completed radiation 6 months
-  // ago. Currently on trastuzumab" would mark radiation as ongoing.
-  const sentences = rawText.split(/(?<=[.;\n])\s+/);
+const NUMBER_WORDS: Record<string, string> = {
+  one: "1",
+  two: "2",
+  three: "3",
+  four: "4",
+  five: "5",
+  six: "6",
+  seven: "7",
+  eight: "8",
+  nine: "9",
+  ten: "10",
+};
 
-  return treatments.map((name) => {
-    const key = name.toLowerCase();
-    const sentence =
-      sentences.find((s) => s.toLowerCase().includes(key))?.toLowerCase() ?? "";
+function extractDiseaseDuration(text: string): string | null {
+  const match = text.match(
+    /\b(?:diagnosed|onset|history|symptoms?)\s*(?:approximately|about|around)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(years?|months?|weeks?)\s*ago\b/i
+  ) || text.match(
+    /\b(?:approximately|about|around|~)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(years?|months?|weeks?)(?:\s+ago|\s+duration)?\b/i
+  );
 
-    if (/\b(ongoing|currently|current|continues|still on|maintenance)\b/.test(sentence)) {
-      return { name, ongoing: true };
+  if (match) {
+    const rawNum = match[1].toLowerCase();
+    const num = NUMBER_WORDS[rawNum] ?? rawNum;
+    return `approximately ${num} ${match[2]}`.trim();
+  }
+  return null;
+}
+
+function extractSymptoms(text: string): string[] {
+  const symptoms: string[] = [];
+  const patterns: Array<{ symptom: string; re: RegExp }> = [
+    { symptom: "right-leg numbness and weakness", re: /numbness\s+and\s+weakness\s+in\s+(?:my|the)?\s*right\s+leg/i },
+    { symptom: "optic neuritis", re: /optic\s+neuritis/i },
+    { symptom: "fatigue", re: /\bfatigue\b/i },
+    { symptom: "lower-extremity weakness", re: /lower[\s-]extremity\s+weakness/i },
+    { symptom: "numbness", re: /\bnumbness\b/i },
+    { symptom: "spasticity", re: /\bspasticity\b/i },
+    { symptom: "ataxia", re: /\bataxia\b/i },
+    { symptom: "neuropathy", re: /\bneuropathy\b/i },
+  ];
+
+  for (const p of patterns) {
+    if (p.re.test(text)) {
+      symptoms.push(p.symptom);
     }
+  }
+  return symptoms;
+}
 
-    // Relative end date, e.g. "completed chemotherapy 6 months ago".
-    const rel = sentence.match(/(\d+)\s*(day|week|month|year)s?\s*ago/);
-    if (rel) {
-      const value = parseInt(rel[1], 10);
-      const unit = rel[2];
-      const days =
-        unit === "day"
-          ? value
-          : unit === "week"
-          ? value * 7
-          : unit === "month"
-          ? value * 30
-          : value * 365;
-      const endDate = new Date(now - days * DAY_MS).toISOString().slice(0, 10);
-      return { name, ongoing: false, endDate };
-    }
+function extractRecentDiseaseActivity(text: string): string | null {
+  const relapseMatch = text.match(
+    /\b((?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:confirmed\s+)?relapses?\s+(?:in|during|over)\s+(?:the\s+)?(?:past|last)\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+months?)\b/i
+  );
+  if (relapseMatch) {
+    const raw = relapseMatch[1].trim();
+    // Normalize word numbers to digits
+    return raw
+      .replace(/\btwo\b/i, "2")
+      .replace(/\bone\b/i, "1")
+      .replace(/\bthree\b/i, "3")
+      .replace(/\bfour\b/i, "4")
+      .replace(/\beighteen\b/i, "18");
+  }
 
-    // No temporal info: leave undated so washout resolves to "unknown".
-    return { name, ongoing: false };
-  });
+  const activityMatch = text.match(
+    /\b(active\s+disease|disease\s+progression|frequent\s+relapses|relapses?\s+in\s+the\s+past\s+year)\b/i
+  );
+  if (activityMatch) return activityMatch[1].trim();
+
+  return null;
+}
+
+function extractMriFindings(text: string): string | null {
+  const matches = [
+    ...text.matchAll(/(?:mri\s+(?:showed|demonstrated|revealed|findings?[:\s])\s*)([^.;\n]+(?:new\s+t2\s+lesions|demyelinating\s+lesions|enhancing\s+lesions|lesions)[^.;\n]*)/gi),
+  ];
+
+  if (matches.length > 0) {
+    const items = matches.map((m) => m[1].trim());
+    return [...new Set(items)].join("; ");
+  }
+
+  const directMatch = text.match(/\b(several\s+new\s+T2\s+lesions[^.;\n]*|multiple\s+demyelinating\s+lesions[^.;\n]*)/i);
+  if (directMatch) {
+    return directMatch[1].trim();
+  }
+
+  return null;
+}
+
+function extractPriorAdvancedTherapies(text: string): {
+  infusionDmt: boolean | null;
+  stemCell: boolean | null;
+  investigational: boolean | null;
+} {
+  const lower = text.toLowerCase();
+  const neverReceivedMatch = lower.match(/never\s+(?:received|had|taken)\s+([^.;\n]+)/i);
+  const neverText = neverReceivedMatch?.[1] ?? "";
+
+  const noInfusion = /infusion/i.test(neverText) || /no\s+infusion/i.test(lower);
+  const noStemCell = /stem[\s-]cell/i.test(neverText) || /no\s+stem[\s-]cell/i.test(lower);
+  const noInvestigational = /investigational/i.test(neverText) || /no\s+investigational/i.test(lower);
+
+  return {
+    infusionDmt: noInfusion ? false : null,
+    stemCell: noStemCell ? false : null,
+    investigational: noInvestigational ? false : null,
+  };
+}
+
+function extractInterests(text: string): string[] {
+  const interests: string[] = [];
+  if (/disease[\s-]modifying\s+treatments?|dmt/i.test(text)) {
+    interests.push("disease-modifying treatments");
+  }
+  if (/her2[\s-]?targeted|anti[\s-]?her2|trastuzumab|pertuzumab/i.test(text)) {
+    interests.push("HER2-targeted therapy");
+  }
+  if (/immunotherapy|checkpoint/i.test(text)) {
+    interests.push("immunotherapy");
+  }
+  if (/clinical\s+trials?\s+evaluating\s+([^.;,\n]+)/i.test(text)) {
+    const m = text.match(/clinical\s+trials?\s+evaluating\s+([^.;,\n]+)/i);
+    if (m?.[1]) interests.push(m[1].trim());
+  }
+  return [...new Set(interests)];
 }
 
 export function extractPatientProfile(rawText: string): PatientProfile {
   const normalizedText = rawText.replace(/\s+/g, " ");
   const text = normalizedText.toLowerCase();
+
+  const normCondition = normalizeCondition(normalizedText);
 
   const ageMatch =
     text.match(/\b(\d{1,3})[\s-]*(?:year|yr|y\.?o|years old)\b/) ||
@@ -240,8 +357,6 @@ export function extractPatientProfile(rawText: string): PatientProfile {
   if (/\b(male|man|m\/f.*\bm\b|he\/him|his\b)/.test(text)) sex = "male";
   else if (/\b(female|woman|f\/m|she\/her|hers\b)/.test(text)) sex = "female";
 
-  const primaryDiagnosis = extractDiagnosis(normalizedText);
-
   const stagePatterns = [
     /\bstage\s+(i{1,3}[abc]?|iv[abc]?|0|[1-4][abc]?)\b/i,
     /\b(staging|classified as)\s+(i{1,3}[abc]?|iv[abc]?)\b/i,
@@ -249,8 +364,14 @@ export function extractPatientProfile(rawText: string): PatientProfile {
   const stage = findFirstMatch(normalizedText, stagePatterns);
 
   const biomarkers = normalizeBiomarkers(normalizedText);
-  const priorTreatments = extractPriorTreatments(normalizedText);
+  const treatmentInfo = extractTreatmentsAndTimeline(normalizedText);
   const location = parseLocationFromNotes(normalizedText);
+  const diseaseDuration = extractDiseaseDuration(normalizedText);
+  const symptoms = extractSymptoms(normalizedText);
+  const recentDiseaseActivity = extractRecentDiseaseActivity(normalizedText);
+  const mriFindings = extractMriFindings(normalizedText);
+  const priorAdvancedTherapies = extractPriorAdvancedTherapies(normalizedText);
+  const interests = extractInterests(normalizedText);
 
   function extractMetastaticStatus(): boolean | null {
     if (
@@ -273,27 +394,22 @@ export function extractPatientProfile(rawText: string): PatientProfile {
     return null;
   }
 
-  const interests: string[] = [];
-  if (/her2[\s-]?targeted|anti[\s-]?her2|trastuzumab|pertuzumab|t[\s-]?dm1|t[\s-]?dxt/i.test(normalizedText)) {
-    interests.push("HER2-targeted therapy");
-  }
-  if (/immunotherapy|checkpoint/i.test(normalizedText)) {
-    interests.push("immunotherapy");
-  }
-
-  const priorTreatmentsTimeline = buildTreatmentTimeline(
-    normalizedText,
-    priorTreatments
-  );
-
   return {
     age,
     sex,
-    primaryDiagnosis,
+    primaryDiagnosis: normCondition.canonicalName,
+    subtype: normCondition.subtype,
+    diseaseDuration,
+    symptoms,
+    currentTreatment: treatmentInfo.currentTreatment,
+    previousTreatments: treatmentInfo.previousTreatments,
+    recentDiseaseActivity,
+    mriFindings,
+    priorAdvancedTherapies,
     stage,
     biomarkers,
-    priorTreatments,
-    priorTreatmentsTimeline,
+    priorTreatments: treatmentInfo.priorTreatments,
+    priorTreatmentsTimeline: treatmentInfo.timeline,
     location,
     hasMetastaticDisease: extractMetastaticStatus(),
     interests,

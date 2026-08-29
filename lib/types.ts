@@ -11,12 +11,33 @@ export interface TreatmentHistory {
   startDate?: string; // YYYY-MM
   endDate?: string;   // YYYY-MM
   ongoing: boolean;
+  reasonDiscontinued?: string;
+}
+
+export interface CriterionEvaluation {
+  name: string;
+  category: "diagnosis" | "subtype" | "prior-treatment" | "disease-activity" | "mri" | "age" | "sex" | "location" | "general";
+  status: "met" | "not-met" | "unknown";
+  evidence?: string;
+  requirement?: string;
 }
 
 export interface PatientProfile {
   age: number | null;
   sex: "male" | "female" | "unknown";
   primaryDiagnosis: string;
+  subtype?: string | null;
+  diseaseDuration?: string | null;
+  symptoms?: string[];
+  currentTreatment?: string | null;
+  previousTreatments?: Array<{ name: string; reasonDiscontinued?: string }>;
+  recentDiseaseActivity?: string | null;
+  mriFindings?: string | null;
+  priorAdvancedTherapies?: {
+    infusionDmt?: boolean | null;
+    stemCell?: boolean | null;
+    investigational?: boolean | null;
+  } | null;
   stage: string | null;
   biomarkers: string[];
   priorTreatments: string[];
@@ -95,6 +116,9 @@ export interface MatchedTrial {
   status: string;
   url: string;
   distance: number | null;
+  reasonsMatched?: string[];
+  reasonsToConfirm?: string[];
+  criteriaEvaluations?: CriterionEvaluation[];
   biomarkerGates?: BiomarkerGate[];
   washoutChecks?: WashoutCheckResult[];
   /** Capped registry eligibility text, used by the review panel. */

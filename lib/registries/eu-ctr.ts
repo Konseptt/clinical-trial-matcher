@@ -1,38 +1,17 @@
 import { capTrialSummary } from "@/lib/format";
-import { resolveRegistryCountry } from "@/lib/location";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
 
 const LEGACY_SEARCH =
   "https://www.clinicaltrialsregister.eu/ctr-search/search";
-
-const EU_SEARCH_COUNTRIES = new Set([
-  "united kingdom",
-  "germany",
-  "france",
-  "spain",
-  "italy",
-  "netherlands",
-  "belgium",
-  "switzerland",
-  "sweden",
-  "norway",
-  "denmark",
-  "ireland",
-  "austria",
-  "poland",
-  "portugal",
-  "finland",
-  "greece",
-  "czech republic",
-  "hungary",
-  "romania",
-]);
 
 function sanitizeQueryParam(val: string): string {
   return val.replace(/[^a-zA-Z0-9\s\-\/]/g, "").trim();
 }
 
 function buildSearchQuery(params: RegistrySearchParams): string {
+  const cleanCond = sanitizeQueryParam(params.condition);
+  if (cleanCond) return cleanCond;
+
   const terms = params.terms
     .map(sanitizeQueryParam)
     .filter(Boolean)
@@ -42,13 +21,7 @@ function buildSearchQuery(params: RegistrySearchParams): string {
     return terms.join(" ");
   }
 
-  return sanitizeQueryParam(params.condition) || "cancer";
-}
-
-function shouldApplyEuCountryFilter(params: RegistrySearchParams): boolean {
-  const registryCountry = resolveRegistryCountry(params.location);
-  if (!registryCountry) return false;
-  return EU_SEARCH_COUNTRIES.has(registryCountry.toLowerCase());
+  return "clinical trial";
 }
 
 export function extractPhaseFromTitle(title: string): string {
@@ -57,8 +30,6 @@ export function extractPhaseFromTitle(title: string): string {
   );
   if (!match) return "Not specified";
   const primary = match[1].toUpperCase();
-  // Preserve the combined phase ("I/II"); dropping match[2] understated the
-  // phase and got such trials filtered out as below phase II.
   return match[2] ? `Phase ${primary}/${match[2].toUpperCase()}` : `Phase ${primary}`;
 }
 
@@ -129,14 +100,6 @@ function buildLegacySearchUrl(params: RegistrySearchParams): string {
     query: searchQuery,
     status: "ongoing",
   });
-
-  if (shouldApplyEuCountryFilter(params)) {
-    const registryCountry = resolveRegistryCountry(params.location);
-    const cleanCountry = sanitizeQueryParam(registryCountry ?? "");
-    if (cleanCountry) {
-      search.set("country", cleanCountry);
-    }
-  }
 
   return `${LEGACY_SEARCH}?${search.toString()}`;
 }

@@ -38,20 +38,21 @@ import type {
 } from "@/lib/types";
 
 const READINESS_RANK: Record<ReadinessStatus, number> = {
+  "likely-eligible-now": 0,
   ready: 0,
-  upcoming: 1,
-  "action-needed": 2,
+  "action-needed": 1,
+  upcoming: 2,
   "opens-later": 3,
+  "not-a-match": 4,
   "likely-ineligible": 4,
 };
 
 const READINESS_FILTERS: Array<{ key: "all" | ReadinessStatus; label: string }> = [
   { key: "all", label: "All" },
-  { key: "ready", label: "Ready now" },
-  { key: "upcoming", label: "Upcoming" },
+  { key: "likely-eligible-now", label: "Likely eligible now" },
   { key: "action-needed", label: "Action needed" },
   { key: "opens-later", label: "Opens later" },
-  { key: "likely-ineligible", label: "Re-check" },
+  { key: "not-a-match", label: "Not a match" },
 ];
 
 function verdictLabel(v: ReviewVerdict): string {
@@ -74,6 +75,7 @@ function verdictTextClass(v: ReviewVerdict): string {
 
 function readinessChipClass(status: ReadinessStatus): string {
   switch (status) {
+    case "likely-eligible-now":
     case "ready":
       return "readiness-ready";
     case "upcoming":
@@ -82,6 +84,7 @@ function readinessChipClass(status: ReadinessStatus): string {
       return "readiness-action";
     case "opens-later":
       return "readiness-later";
+    case "not-a-match":
     case "likely-ineligible":
       return "readiness-ineligible";
   }
@@ -118,22 +121,32 @@ function buildReminderEvent(
 interface ResultsDashboardProps {
   data: MatchResponse;
   onProfileUpdate: (updatedProfile: PatientProfile) => void;
-  isUpdating: boolean;
+  isUpdating?: boolean;
 }
 
 function safeUrl(url: string): string {
-  if (!url) return "#";
-  const normalized = url.trim().toLowerCase();
-  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
-    return url;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return url;
+    }
+  } catch {
+    // ignore
   }
   return "#";
 }
 
-function scoreRingClass(score: number): string {
-  if (score >= 80) return "score-ring-high";
-  if (score >= 55) return "score-ring-mid";
-  return "score-ring-low";
+function formatSex(sex: PatientProfile["sex"]): string {
+  if (sex === "male") return "Male";
+  if (sex === "female") return "Female";
+  return "Unknown";
+}
+
+function matchLabel(score: number): string {
+  if (score >= 80) return "Strong fit";
+  if (score >= 60) return "Moderate fit";
+  if (score >= 45) return "Potential fit";
+  return "Review needed";
 }
 
 function ScoreRing({
@@ -151,88 +164,86 @@ function ScoreRing({
     <button
       type="button"
       onClick={onClick}
-      className={`score-ring ${scoreRingClass(score)}`}
-      aria-label={`Match score: ${score}%. ${label}. Click to view breakdown.`}
+      className="score-group cursor-pointer text-right group focus:outline-none"
+      title="Click to view score breakdown"
       aria-expanded={expanded}
     >
-      <span className="score-ring-num" aria-hidden="true">
-        {score}
+      <div className="flex items-baseline justify-end gap-1">
+        <span className="score-value group-hover:text-primary transition-colors">
+          {score}
+        </span>
+        <span className="score-denom">%</span>
+      </div>
+      <span className="score-fit-label flex items-center justify-end gap-1 group-hover:text-primary transition-colors">
+        {label}
+        <span
+          className={`inline-block text-[10px] transform transition-transform ${
+            expanded ? "rotate-180" : ""
+          }`}
+        >
+          &#9662;
+        </span>
       </span>
-      <span className="score-ring-label">{label}</span>
     </button>
   );
 }
 
-function matchLabel(score: number): string {
-  if (score >= 80) return "Strong match";
-  if (score >= 55) return "Moderate match";
-  return "Review recommended";
-}
-
-function formatSex(sex: PatientProfile["sex"]): string | null {
-  if (sex === "unknown") return null;
-  return sex.charAt(0).toUpperCase() + sex.slice(1);
-}
-
-interface TagEditorProps {
+function TagEditor({
+  tags,
+  onChange,
+  placeholder,
+}: {
   tags: string[];
   onChange: (tags: string[]) => void;
   placeholder?: string;
-}
-
-function TagEditor({ tags, onChange, placeholder }: TagEditorProps) {
-  const [input, setInput] = useState("");
+}) {
+  const [inputVal, setInputVal] = useState("");
 
   const handleAdd = () => {
-    const trimmed = input.trim();
-    if (trimmed && !tags.some(t => t.toLowerCase() === trimmed.toLowerCase())) {
+    const trimmed = inputVal.trim();
+    if (trimmed && !tags.includes(trimmed)) {
       onChange([...tags, trimmed]);
-      setInput("");
+      setInputVal("");
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleAdd();
-    }
-  };
-
-  const handleRemove = (indexToRemove: number) => {
-    onChange(tags.filter((_, i) => i !== indexToRemove));
+  const handleRemove = (tagToRemove: string) => {
+    onChange(tags.filter((t) => t !== tagToRemove));
   };
 
   return (
-    <div className="mt-1">
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {tags.map((tag, idx) => (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5 min-h-6">
+        {tags.map((tag) => (
           <span
-            key={idx}
-            className="inline-flex items-center gap-1 text-xs text-foreground font-body"
+            key={tag}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-surface-muted text-foreground border border-border-subtle"
           >
             {tag}
             <button
               type="button"
-              onClick={() => handleRemove(idx)}
-              className="text-faint hover:text-destructive focus:outline-none text-sm leading-none"
+              onClick={() => handleRemove(tag)}
+              className="text-faint hover:text-destructive text-sm leading-none"
               aria-label={`Remove ${tag}`}
             >
               &times;
             </button>
           </span>
         ))}
-        {tags.length === 0 && (
-          <span className="text-xs text-faint italic py-0.5">No entries</span>
-        )}
       </div>
       <div className="flex gap-2">
         <input
           type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder || "Add entry"}
-          className="field-input text-xs flex-1"
+          value={inputVal}
+          onChange={(e) => setInputVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleAdd();
+            }
+          }}
+          placeholder={placeholder || "Add item..."}
+          className="field-input text-xs"
         />
         <button
           type="button"
@@ -257,39 +268,27 @@ function ProfileSummary({
   const [editedAge, setEditedAge] = useState<number | "">(profile.age ?? "");
   const [editedSex, setEditedSex] = useState<PatientProfile["sex"]>(profile.sex);
   const [editedDiagnosis, setEditedDiagnosis] = useState(profile.primaryDiagnosis);
+  const [editedSubtype, setEditedSubtype] = useState(profile.subtype ?? "");
+  const [editedDuration, setEditedDuration] = useState(profile.diseaseDuration ?? "");
   const [editedStage, setEditedStage] = useState(profile.stage ?? "");
   const [editedCity, setEditedCity] = useState(profile.location?.city ?? "");
   const [editedState, setEditedState] = useState(profile.location?.state ?? "");
   const [editedCountry, setEditedCountry] = useState(profile.location?.country ?? "");
-  const [editedMetastasis, setEditedMetastasis] = useState<string>(
-    profile.hasMetastaticDisease === true
-      ? "yes"
-      : profile.hasMetastaticDisease === false
-      ? "no"
-      : "unknown"
-  );
   const [editedBiomarkers, setEditedBiomarkers] = useState<string[]>(profile.biomarkers);
   const [editedPriorTreatments, setEditedPriorTreatments] = useState<string[]>(profile.priorTreatments);
   const [editedTimeline, setEditedTimeline] = useState<TreatmentHistory[]>(profile.priorTreatmentsTimeline || []);
   const [editedInterests, setEditedInterests] = useState<string[]>(profile.interests);
 
   useEffect(() => {
-    // Sync editable form state when the source profile prop changes.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditedAge(profile.age ?? "");
     setEditedSex(profile.sex);
     setEditedDiagnosis(profile.primaryDiagnosis);
+    setEditedSubtype(profile.subtype ?? "");
+    setEditedDuration(profile.diseaseDuration ?? "");
     setEditedStage(profile.stage ?? "");
     setEditedCity(profile.location?.city ?? "");
     setEditedState(profile.location?.state ?? "");
     setEditedCountry(profile.location?.country ?? "");
-    setEditedMetastasis(
-      profile.hasMetastaticDisease === true
-        ? "yes"
-        : profile.hasMetastaticDisease === false
-        ? "no"
-        : "unknown"
-    );
     setEditedBiomarkers(profile.biomarkers);
     setEditedPriorTreatments(profile.priorTreatments);
     setEditedTimeline(profile.priorTreatmentsTimeline || []);
@@ -308,17 +307,14 @@ function ProfileSummary({
         : null;
 
     const updatedProfile: PatientProfile = {
+      ...profile,
       age: editedAge === "" ? null : Number(editedAge),
       sex: editedSex,
       primaryDiagnosis: editedDiagnosis.trim(),
+      subtype: editedSubtype.trim() || null,
+      diseaseDuration: editedDuration.trim() || null,
       stage: editedStage.trim() || null,
       location: updatedLocation,
-      hasMetastaticDisease:
-        editedMetastasis === "yes"
-          ? true
-          : editedMetastasis === "no"
-          ? false
-          : null,
       biomarkers: editedBiomarkers,
       priorTreatments: editedPriorTreatments,
       priorTreatmentsTimeline: editedTimeline,
@@ -334,7 +330,7 @@ function ProfileSummary({
       <form onSubmit={handleSave} className="space-y-4 text-left">
         <div className="flex items-center justify-between pb-3 mb-2">
           <h2 className="font-display text-lg text-foreground">
-            Edit patient profile
+            Edit clinical profile
           </h2>
           <div className="flex gap-4">
             <button
@@ -355,114 +351,93 @@ function ProfileSummary({
 
         <div className="space-y-3.5 max-h-[70vh] overflow-y-auto pr-1">
           <div>
-            <label className="block text-xs font-semibold text-faint mb-1">Age</label>
-            <input
-              type="number"
-              min="0"
-              max="120"
-              value={editedAge}
-              onChange={(e) =>
-                setEditedAge(e.target.value === "" ? "" : Number(e.target.value))
-              }
-              className="field-input text-xs"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-faint mb-1">Sex</label>
-            <select
-              value={editedSex}
-              onChange={(e) => setEditedSex(e.target.value as PatientProfile["sex"])}
-              className="field-select text-xs"
-            >
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="unknown">Unknown</option>
-            </select>
-          </div>
-
-          <div>
             <label className="block text-xs font-semibold text-faint mb-1">Diagnosis</label>
             <input
               type="text"
               value={editedDiagnosis}
               onChange={(e) => setEditedDiagnosis(e.target.value)}
               className="field-input text-xs"
-              required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-faint mb-1">Stage</label>
+            <label className="block text-xs font-semibold text-faint mb-1">Subtype</label>
             <input
               type="text"
-              value={editedStage}
-              onChange={(e) => setEditedStage(e.target.value)}
-              placeholder="e.g. Stage III, Stage IV"
+              value={editedSubtype}
+              onChange={(e) => setEditedSubtype(e.target.value)}
+              placeholder="e.g. Relapsing-Remitting MS (RRMS)"
               className="field-input text-xs"
             />
           </div>
 
-          <div className="space-y-2.5 pt-2">
-            <span className="block text-xs font-semibold text-faint">
-              Location
-            </span>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-faint mb-0.5">City</label>
-                <input
-                  type="text"
-                  value={editedCity}
-                  onChange={(e) => setEditedCity(e.target.value)}
-                  className="field-input text-xs"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-faint mb-0.5">State/Prov</label>
-                <input
-                  type="text"
-                  value={editedState}
-                  onChange={(e) => setEditedState(e.target.value)}
-                  placeholder="MA"
-                  className="field-input text-xs"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-faint mb-0.5">Country</label>
-                <input
-                  type="text"
-                  value={editedCountry}
-                  onChange={(e) => setEditedCountry(e.target.value)}
-                  className="field-input text-xs"
-                />
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-faint mb-1">Age</label>
+              <input
+                type="number"
+                value={editedAge}
+                onChange={(e) => setEditedAge(e.target.value === "" ? "" : Number(e.target.value))}
+                className="field-input text-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-faint mb-1">Sex</label>
+              <select
+                value={editedSex}
+                onChange={(e) => setEditedSex(e.target.value as PatientProfile["sex"])}
+                className="field-select text-xs"
+              >
+                <option value="unknown">Unknown</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-faint mb-1">Metastasis</label>
-            <select
-              value={editedMetastasis}
-              onChange={(e) => setEditedMetastasis(e.target.value)}
-              className="field-select text-xs"
-            >
-              <option value="unknown">Unknown</option>
-              <option value="yes">Metastatic disease present</option>
-              <option value="no">No metastatic disease documented</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-faint">Biomarkers</label>
-            <TagEditor
-              tags={editedBiomarkers}
-              onChange={setEditedBiomarkers}
-              placeholder="e.g. HER2 positive"
+            <label className="block text-xs font-semibold text-faint mb-1">Disease duration</label>
+            <input
+              type="text"
+              value={editedDuration}
+              onChange={(e) => setEditedDuration(e.target.value)}
+              placeholder="e.g. approximately 4 years"
+              className="field-input text-xs"
             />
           </div>
 
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-xs font-semibold text-faint mb-1">City</label>
+              <input
+                type="text"
+                value={editedCity}
+                onChange={(e) => setEditedCity(e.target.value)}
+                className="field-input text-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-faint mb-1">State / Region</label>
+              <input
+                type="text"
+                value={editedState}
+                onChange={(e) => setEditedState(e.target.value)}
+                className="field-input text-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-faint mb-1">Country</label>
+              <input
+                type="text"
+                value={editedCountry}
+                onChange={(e) => setEditedCountry(e.target.value)}
+                className="field-input text-xs"
+              />
+            </div>
+          </div>
+
           <div>
-            <label className="block text-xs font-semibold text-faint">Prior therapies</label>
+            <label className="block text-xs font-semibold text-faint">Prior &amp; current therapies</label>
             <TagEditor
               tags={editedPriorTreatments}
               onChange={(newTags) => {
@@ -474,54 +449,17 @@ function ProfileSummary({
                   });
                 });
               }}
-              placeholder="e.g. Chemotherapy"
+              placeholder="e.g. Dimethyl fumarate, Interferon beta-1a"
             />
-            {editedTimeline.length > 0 && (
-              <div className="mt-3.5 space-y-3 pt-2 divider">
-                <span className="block text-xs font-bold text-faint font-body">
-                  Therapy timeline
-                </span>
-                {editedTimeline.map((item, idx) => (
-                  <div key={idx} className="space-y-1.5 py-2 border-b border-border-subtle text-xs last:border-0">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-foreground font-body">{item.name}</span>
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={item.ongoing}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setEditedTimeline(prev =>
-                              prev.map((t, i) =>
-                                i === idx ? { ...t, ongoing: val, endDate: val ? undefined : t.endDate } : t
-                              )
-                            );
-                          }}
-                          className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
-                        />
-                        <span className="text-xs text-faint font-body">Ongoing</span>
-                      </label>
-                    </div>
-                    {!item.ongoing && (
-                      <div className="flex gap-2 items-center">
-                        <span className="text-xs text-faint whitespace-nowrap font-body">End Date:</span>
-                        <input
-                          type="month"
-                          value={item.endDate || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setEditedTimeline(prev =>
-                              prev.map((t, i) => (i === idx ? { ...t, endDate: val } : t))
-                            );
-                          }}
-                          className="field-input text-xs"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-faint">Biomarkers / Lab features</label>
+            <TagEditor
+              tags={editedBiomarkers}
+              onChange={setEditedBiomarkers}
+              placeholder="e.g. HER2 positive, Anti-JCV positive"
+            />
           </div>
 
           <div>
@@ -529,7 +467,7 @@ function ProfileSummary({
             <TagEditor
               tags={editedInterests}
               onChange={setEditedInterests}
-              placeholder="e.g. Immunotherapy"
+              placeholder="e.g. Disease-modifying treatments"
             />
           </div>
         </div>
@@ -537,37 +475,44 @@ function ProfileSummary({
     );
   }
 
+  const previousTreatmentsText = profile.previousTreatments && profile.previousTreatments.length > 0
+    ? profile.previousTreatments.map(t => t.reasonDiscontinued ? `${t.name} (discontinued: ${t.reasonDiscontinued})` : t.name).join(", ")
+    : null;
+
+  const advancedTherapiesText = profile.priorAdvancedTherapies
+    ? [
+        profile.priorAdvancedTherapies.infusionDmt === false ? "No infusion DMT" : null,
+        profile.priorAdvancedTherapies.stemCell === false ? "No stem-cell therapy" : null,
+        profile.priorAdvancedTherapies.investigational === false ? "No investigational therapy" : null,
+      ].filter(Boolean).join("; ")
+    : null;
+
   const rows: Array<{ label: string; value: string | number | null }> = [
+    { label: "Diagnosis", value: profile.primaryDiagnosis },
+    { label: "Subtype", value: profile.subtype ?? null },
+    { label: "Duration", value: profile.diseaseDuration ?? null },
+    {
+      label: "Symptoms / history",
+      value: profile.symptoms && profile.symptoms.length > 0 ? profile.symptoms.join("; ") : null,
+    },
+    { label: "Current treatment", value: profile.currentTreatment ?? null },
+    {
+      label: "Previous treatment",
+      value: previousTreatmentsText || (profile.priorTreatments.length > 0 ? profile.priorTreatments.join(", ") : null),
+    },
+    { label: "Recent activity", value: profile.recentDiseaseActivity ?? null },
+    { label: "MRI findings", value: profile.mriFindings ?? null },
+    { label: "Advanced therapies", value: advancedTherapiesText },
     { label: "Age", value: profile.age },
     { label: "Sex", value: formatSex(profile.sex) },
-    { label: "Diagnosis", value: profile.primaryDiagnosis },
-    { label: "Stage", value: profile.stage },
     { label: "Location", value: formatLocationDisplay(profile.location) },
     {
       label: "Biomarkers",
-      value:
-        profile.biomarkers.length > 0 ? profile.biomarkers.join(", ") : null,
-    },
-    {
-      label: "Past treatments",
-      value:
-        profile.priorTreatments.length > 0
-          ? profile.priorTreatments.join(", ")
-          : null,
-    },
-    {
-      label: "Metastasis",
-      value:
-        profile.hasMetastaticDisease === false
-          ? "Not documented"
-          : profile.hasMetastaticDisease === true
-          ? "Present"
-          : null,
+      value: profile.biomarkers.length > 0 ? profile.biomarkers.join(", ") : null,
     },
     {
       label: "Objectives",
-      value:
-        profile.interests.length > 0 ? profile.interests.join(", ") : null,
+      value: profile.interests.length > 0 ? profile.interests.join(", ") : null,
     },
   ];
 
@@ -611,6 +556,8 @@ function ProfileSummary({
                 ? "Ongoing"
                 : item.endDate
                 ? `Completed ${item.endDate}`
+                : item.reasonDiscontinued
+                ? `Discontinued (${item.reasonDiscontinued})`
                 : "Date unspecified";
               return (
                 <div key={idx} className="relative">
@@ -642,11 +589,11 @@ const REGISTRY_DETAILS: Record<
     href: "https://clinicaltrials.gov",
   },
   "EU-CTR": {
-    label: "EU Clinical Trials Register",
+    label: "EU registry",
     href: "https://www.clinicaltrialsregister.eu",
   },
   "WHO ICTRP": {
-    label: "WHO International Trials Portal",
+    label: "WHO ICTRP",
     href: "https://trialsearch.who.int",
   },
   ISRCTN: {
@@ -655,53 +602,6 @@ const REGISTRY_DETAILS: Record<
   },
 };
 
-function registryStatusMessage(
-  summary: MatchResponse["registrySummaries"][number],
-  whoSearchState: WhoSearchState
-): { tone: "success" | "neutral" | "warning" | "loading"; text: string } {
-  if (summary.registry === "WHO ICTRP" && whoSearchState === "loading") {
-    return {
-      tone: "loading",
-      text: "Querying WHO ICTRP",
-    };
-  }
-
-  if (summary.error && summary.error !== "WHO_ICTRP_BROWSER_REQUIRED") {
-    return {
-      tone: "warning",
-      text: "Connection unavailable. Other registries included.",
-    };
-  }
-
-  if (summary.registry === "WHO ICTRP" && whoSearchState === "error") {
-    return {
-      tone: "warning",
-      text: "WHO search unavailable from this environment. See who.int directly.",
-    };
-  }
-
-  if (summary.registry === "WHO ICTRP" && whoSearchState === "empty") {
-    return {
-      tone: "neutral",
-      text: "No matching studies identified",
-    };
-  }
-
-  if (summary.trialCount > 0) {
-    return {
-      tone: "success",
-      text: `${summary.trialCount} ${
-        summary.trialCount === 1 ? "study" : "studies"
-      } identified (eligibility not yet assessed)`,
-    };
-  }
-
-  return {
-    tone: "neutral",
-    text: "No matches for your search right now",
-  };
-}
-
 function RegistryStatus({
   summaries,
   whoSearchState,
@@ -709,11 +609,6 @@ function RegistryStatus({
   summaries: MatchResponse["registrySummaries"];
   whoSearchState: WhoSearchState;
 }) {
-  const responded = summaries.filter(
-    (summary) =>
-      summary.trialCount > 0 ||
-      (summary.registry === "WHO ICTRP" && whoSearchState === "loading")
-  );
   const totalFound = summaries.reduce(
     (count, summary) => count + summary.trialCount,
     0
@@ -724,86 +619,61 @@ function RegistryStatus({
       <h2 id="sources-heading" className="font-display text-xl text-foreground">
         Registry coverage
       </h2>
-      <p className="section-hint mt-2 font-body leading-relaxed">
-        {totalFound} {totalFound === 1 ? "study" : "studies"} identified across{" "}
-        {summaries.length} registries prior to ranking.
-      </p>
 
-      <div className="registry-meter">
+      <div className="mt-3 space-y-2 font-mono text-xs">
         {summaries.map((summary) => {
           const details = REGISTRY_DETAILS[summary.registry];
-          const status = registryStatusMessage(summary, whoSearchState);
-          const shortLabel =
-            summary.registry === "ClinicalTrials.gov"
-              ? "CT.gov"
-              : summary.registry === "EU-CTR"
-              ? "EU"
-              : summary.registry === "WHO ICTRP"
-              ? "WHO"
-              : "ISRCTN";
-
-          let fillClass = "registry-meter-fill";
-          let fillWidth = `${Math.min(100, Math.max(12, summary.trialCount * 4))}%`;
-          if (status.tone === "loading") {
-            fillClass += " registry-meter-fill-loading";
-            fillWidth = "30%";
-          } else if (status.tone === "warning") {
-            fillClass += " registry-meter-fill-warn";
-            fillWidth = "20%";
-          } else if (summary.trialCount === 0) {
-            fillClass += " registry-meter-fill-empty";
-            fillWidth = "8%";
-          }
+          const isWhoLoading = summary.registry === "WHO ICTRP" && whoSearchState === "loading";
+          const isError = Boolean(summary.error && summary.error !== "WHO_ICTRP_BROWSER_REQUIRED");
+          const isUnavailable = isError || (summary.registry === "WHO ICTRP" && whoSearchState === "error");
 
           return (
-            <div key={summary.registry} className="registry-meter-row">
+            <div key={summary.registry} className="flex justify-between items-center py-1 border-b border-border-subtle/50 font-body">
               <a
                 href={details.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="registry-meter-label hover:text-primary transition-colors"
-                title={details.label}
+                className="text-foreground hover:text-primary transition-colors font-medium"
               >
-                {shortLabel}
+                {details.label}
               </a>
-              <div className="registry-meter-track" title={status.text}>
-                <div
-                  className={fillClass}
-                  style={{ width: fillWidth }}
-                />
-              </div>
-              <span className="registry-meter-count">
-                {status.tone === "loading" ? "--" : summary.trialCount}
+              <span className={isUnavailable ? "text-destructive" : summary.trialCount > 0 ? "text-foreground font-semibold" : "text-faint"}>
+                {isWhoLoading
+                  ? "searching..."
+                  : isUnavailable
+                  ? "unavailable"
+                  : `${summary.trialCount} candidate${summary.trialCount === 1 ? "" : "s"}`}
               </span>
             </div>
           );
         })}
       </div>
 
-      {responded.length > 0 && responded.length < summaries.length && (
-        <p className="section-hint text-xs mt-4 font-body leading-relaxed">
-          One or more registries returned no results or were unavailable. Rankings reflect available data.
-        </p>
-      )}
+      <p className="section-hint mt-3 text-xs font-body leading-relaxed">
+        <span className="font-semibold text-foreground">{totalFound}</span> candidate{" "}
+        {totalFound === 1 ? "study" : "studies"} identified before ranking.
+      </p>
     </section>
   );
 }
 
-function generatePersonalizedQuestions(profile: PatientProfile, trial: MatchedTrial): string[] {
-  const qs = [
-    `What is the expected efficacy of this ${trial.phase} protocol relative to current standard of care?`,
-  ];
-  if (profile.biomarkers.length > 0) {
-    qs.push(`Does eligibility require or target the following biomarkers: ${profile.biomarkers.join(", ")}?`);
+function generatePersonalizedQuestions(
+  profile: PatientProfile,
+  trial: MatchedTrial
+): string[] {
+  const qs: string[] = [];
+  qs.push(`Does my ${profile.primaryDiagnosis} diagnosis and clinical history meet this study's entry criteria?`);
+  if (profile.subtype) {
+    qs.push(`Is this protocol actively enrolling patients with ${profile.subtype}?`);
   }
-  if (profile.priorTreatments.length > 0) {
-    qs.push(`How do prior therapies (${profile.priorTreatments.join(", ")}) affect eligibility and expected response?`);
+  if (profile.currentTreatment) {
+    qs.push(`How does my current therapy (${profile.currentTreatment}) transition into this trial protocol?`);
   }
-  if (profile.stage) {
-    qs.push(`Is this protocol appropriate for patients at stage ${profile.stage}?`);
+  if (profile.priorTreatments && profile.priorTreatments.length > 0) {
+    qs.push(`Do my prior treatments (${profile.priorTreatments.join(", ")}) satisfy prior therapy and washout requirements?`);
   }
   if (trial.locations.length > 0) {
-    qs.push(`What travel is required for treatment and surveillance visits, and is logistical support available?`);
+    qs.push(`What travel or on-site visits are required for screening and administration at the nearest site?`);
   }
   return qs;
 }
@@ -995,252 +865,186 @@ function TrialCard({
             {stripEmDashes(trial.title)}
           </h3>
 
-            {simplifiedGuide && !showOriginalSummary ? (
-              <SimplifiedTrialGuideView
-                guide={simplifiedGuide}
-                onShowOriginal={() => setShowOriginalSummary(true)}
-              />
-            ) : (
-              <>
-                <p className="section-hint mt-3 leading-relaxed break-words font-body">
-                  {displaySummary}
-                </p>
-                {isLongSummary && (
-                  <button
-                    type="button"
-                    onClick={() => setSummaryExpanded((prev) => !prev)}
-                    className="text-xs font-semibold text-primary hover:underline mt-1 cursor-pointer font-body"
-                  >
-                    {summaryExpanded ? "Collapse" : "Expand summary"}
-                  </button>
-                )}
-                {simplifiedGuide && showOriginalSummary && (
-                  <button
-                    type="button"
-                    onClick={() => setShowOriginalSummary(false)}
-                    className="text-xs font-semibold text-primary hover:underline mt-2 cursor-pointer font-body"
-                  >
-                    Return to patient summary
-                  </button>
-                )}
-              </>
-            )}
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSimplify}
-                disabled={isSimplifying}
-                className="btn-ghost text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSimplifying
-                  ? "Generating summary"
-                  : simplifiedGuide
-                    ? "Regenerate summary"
-                    : "Generate patient summary"}
-              </button>
-              <button
-                type="button"
-                onClick={handleRunPanel}
-                disabled={isRunningPanel}
-                className="btn-ghost text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isRunningPanel
-                  ? "Convening review panel"
-                  : panel
-                    ? "Re-run review panel"
-                    : "Run eligibility review panel"}
-              </button>
-              {simplifiedGuide && !showOriginalSummary && (
-                <span className="text-xs text-faint font-body">
-                  Profile-specific summary; not medical advice
-                </span>
+          {simplifiedGuide && !showOriginalSummary ? (
+            <SimplifiedTrialGuideView
+              guide={simplifiedGuide}
+              onShowOriginal={() => setShowOriginalSummary(true)}
+            />
+          ) : (
+            <>
+              <p className="section-hint mt-3 leading-relaxed break-words font-body">
+                {displaySummary}
+              </p>
+              {isLongSummary && (
+                <button
+                  type="button"
+                  onClick={() => setSummaryExpanded((prev) => !prev)}
+                  className="text-xs font-semibold text-primary hover:underline mt-1 cursor-pointer font-body"
+                >
+                  {summaryExpanded ? "Collapse" : "Expand summary"}
+                </button>
               )}
+              {simplifiedGuide && showOriginalSummary && (
+                <button
+                  type="button"
+                  onClick={() => setShowOriginalSummary(false)}
+                  className="text-xs font-semibold text-primary hover:underline mt-2 cursor-pointer font-body"
+                >
+                  Return to patient summary
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Match reasoning: Why this matched & What needs confirmation */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-surface-muted/60 p-3 rounded-md border border-border-subtle">
+            <div>
+              <p className="font-semibold text-foreground mb-1.5 flex items-center gap-1">
+                <span className="text-primary font-bold">&#10003;</span> Why this matched
+              </p>
+              <ul className="space-y-1 text-faint pl-4 list-disc">
+                {(trial.reasonsMatched && trial.reasonsMatched.length > 0) ? (
+                  trial.reasonsMatched.map((reason, idx) => (
+                    <li key={idx}>{reason}</li>
+                  ))
+                ) : (
+                  <li>Target condition aligns with clinical profile</li>
+                )}
+              </ul>
             </div>
-            {panelError && (
-              <p className="text-xs text-destructive mt-1 font-body">{panelError}</p>
-            )}
-            {simplifyError && (
-              <p className="text-xs text-destructive mt-1 font-body">{simplifyError}</p>
-            )}
 
-            {trial.biomarkerGates && trial.biomarkerGates.length > 0 && (
-              <div className="mt-5 text-xs space-y-3">
-                <p className="guide-heading">Biomarker eligibility</p>
-                <ul className="space-y-3">
-                  {trial.biomarkerGates.map((gate, idx) => (
-                    <li key={idx} className="space-y-1">
-                      <p className="text-foreground font-medium">
-                        {gate.gateType}{" "}
-                        <span className="text-faint font-normal">
-                          ({gate.passed ? "criteria met" : "criteria not met"})
-                        </span>
-                      </p>
-                      <ul className="space-y-1 pl-3">
-                        {gate.rules.map((rule, ridx) => (
-                          <li key={ridx} className="flex justify-between gap-4 text-faint">
-                            <span>{rule.marker} ({rule.expected})</span>
-                            <span className="capitalize">{rule.status}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <div>
+              <p className="font-semibold text-foreground mb-1.5 flex items-center gap-1">
+                <span className="text-accent font-bold">&#9679;</span> What needs confirmation
+              </p>
+              <ul className="space-y-1 text-faint pl-4 list-disc">
+                {(trial.reasonsToConfirm && trial.reasonsToConfirm.length > 0) ? (
+                  trial.reasonsToConfirm.map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))
+                ) : (
+                  <li>Confirm detailed laboratory and protocol eligibility with study site</li>
+                )}
+              </ul>
+            </div>
+          </div>
 
-            {trial.washoutChecks && trial.washoutChecks.length > 0 && (
-              <div className="mt-5 text-xs space-y-2">
-                <p className="guide-heading">Therapy washout period</p>
-                <ul className="divide-y divide-border-subtle">
-                  {trial.washoutChecks.map((check, idx) => (
-                    <li key={idx} className="check-row">
-                      <span>
-                        <span className="font-medium text-foreground">{check.treatmentName}</span>
-                        {" "}
-                        requires {check.requiredDays}-day washout
-                      </span>
-                      <span className="text-faint">
-                        {check.status === "eligible" && `Meets requirement (${check.actualDays} days elapsed)`}
-                        {check.status === "ineligible" && `Does not meet requirement (${check.actualDays} days elapsed)`}
-                        {check.status === "unknown" && "Insufficient date information"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSimplify}
+              disabled={isSimplifying}
+              className="btn-ghost text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSimplifying
+                ? "Generating summary"
+                : simplifiedGuide
+                  ? "Regenerate summary"
+                  : "Generate patient summary"}
+            </button>
+            <button
+              type="button"
+              onClick={handleRunPanel}
+              disabled={isRunningPanel}
+              className="btn-ghost text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRunningPanel
+                ? "Convening review panel"
+                : panel
+                  ? "Re-run review panel"
+                  : "Run eligibility review panel"}
+            </button>
+          </div>
 
-            {trial.locations.length > 0 && (
-              <div className="mt-4">
-                <p className="guide-heading mb-1.5">Study sites</p>
-                <ul className="space-y-0.5">
-                  {trial.locations.map((loc, i) => (
-                    <li
-                      key={`${trial.trialId}-loc-${i}`}
-                      className="section-hint text-sm break-words"
+          {panelError && (
+            <p className="text-xs text-destructive mt-1 font-body">{panelError}</p>
+          )}
+          {simplifyError && (
+            <p className="text-xs text-destructive mt-1 font-body">{simplifyError}</p>
+          )}
+
+          {trial.criteriaEvaluations && trial.criteriaEvaluations.length > 0 && (
+            <div className="mt-4 text-xs space-y-2">
+              <p className="guide-heading">Eligibility criteria evaluation</p>
+              <ul className="divide-y divide-border-subtle border border-border-subtle rounded p-2 bg-surface">
+                {trial.criteriaEvaluations.map((crit, cidx) => (
+                  <li key={cidx} className="py-1.5 flex justify-between items-center gap-2 text-xs">
+                    <div className="space-y-0.5">
+                      <span className="font-medium text-foreground">{crit.name}</span>
+                      {crit.evidence && <span className="text-faint text-[11px] block">{crit.evidence}</span>}
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[11px] font-medium uppercase tracking-wide shrink-0 ${
+                        crit.status === "met"
+                          ? "bg-primary/10 text-primary"
+                          : crit.status === "not-met"
+                          ? "bg-destructive/10 text-destructive"
+                          : "bg-surface-muted text-faint"
+                      }`}
                     >
-                      {[loc.facility, loc.city, loc.state, loc.country]
-                        .filter(Boolean)
-                        .join(", ")}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+                      {crit.status === "met" ? "Met" : crit.status === "not-met" ? "Not met" : "Unknown"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-            {(forecast.blockers.length > 0 || forecast.actions.length > 0) && (
-              <div className="mt-5 text-xs space-y-2">
-                <p className="guide-heading">Eligibility forecast</p>
-                {forecast.status === "upcoming" && forecast.earliestDate && (
-                  <p className="text-sm text-foreground font-body">
-                    Projected eligible around{" "}
-                    <span className="font-semibold">
-                      {formatForecastDate(forecast.earliestDate)}
-                    </span>{" "}
-                    as a treatment washout window clears.
-                  </p>
-                )}
-                {forecast.blockers.length > 0 && (
-                  <ul className="space-y-1 text-faint">
-                    {forecast.blockers.map((b, i) => (
-                      <li key={i} className="flex gap-2">
-                        <span aria-hidden="true">-</span>
-                        <span>{b}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {forecast.actions.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-foreground font-medium">Next steps</p>
-                    <ul className="space-y-1 text-faint">
-                      {forecast.actions.map((a, i) => (
-                        <li key={i} className="flex gap-2">
-                          <span aria-hidden="true">-</span>
-                          <span>{a}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {forecast.status === "upcoming" && forecast.earliestDate && (
-                  <button
-                    type="button"
-                    onClick={() => onAddReminder(trial, forecast)}
-                    className="btn-ghost text-xs mt-1"
+          {trial.locations.length > 0 && (
+            <div className="mt-4">
+              <p className="guide-heading mb-1.5">Study sites</p>
+              <ul className="space-y-0.5">
+                {trial.locations.slice(0, 5).map((loc, i) => (
+                  <li
+                    key={`${trial.trialId}-loc-${i}`}
+                    className="section-hint text-sm break-words"
                   >
-                    Add calendar reminder
-                  </button>
-                )}
-              </div>
-            )}
+                    {[loc.facility, loc.city, loc.state, loc.country]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-            {panel && (
-              <div className="mt-5 space-y-3 text-xs">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className="guide-heading">Eligibility review panel</p>
-                  <span
-                    className={`readiness-chip ${verdictChipClass(panel.consensus.verdict)}`}
-                  >
-                    <span className="readiness-dot" aria-hidden="true" />
-                    Consensus: {verdictLabel(panel.consensus.verdict)} (
-                    {panel.consensus.confidence}%)
-                  </span>
-                </div>
-                {panel.consensus.conflicts.length > 0 && (
-                  <p className="text-faint">
-                    Split opinion: {panel.consensus.conflicts.join("; ")}.
-                  </p>
-                )}
-                <ul className="space-y-3">
-                  {panel.reviewers.map((r) => (
-                    <li
-                      key={r.id}
-                      className="space-y-1 border-b border-border-subtle pb-3 last:border-0"
-                    >
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-foreground font-medium">{r.role}</span>
-                        <span className={verdictTextClass(r.verdict)}>
-                          {verdictLabel(r.verdict)} ({r.confidence}%)
-                        </span>
-                      </div>
-                      <p className="text-faint">
-                        {r.focus}.{r.rationale ? ` ${r.rationale}` : ""}
-                      </p>
-                      {r.questions.length > 0 && (
-                        <ul className="space-y-0.5 text-faint pl-3">
-                          {r.questions.map((q, i) => (
-                            <li key={i} className="italic">
-                              {q}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                {panel.consensus.questions.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-foreground font-medium">
-                      Questions for the study team
-                    </p>
-                    <ul className="space-y-0.5 text-faint pl-3">
-                      {panel.consensus.questions.map((q, i) => (
-                        <li key={i} className="italic">
-                          {q}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+          {panel && (
+            <div className="mt-5 space-y-3 text-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="guide-heading">Eligibility review panel</p>
+                <span
+                  className={`readiness-chip ${verdictChipClass(panel.consensus.verdict)}`}
+                >
+                  <span className="readiness-dot" aria-hidden="true" />
+                  Consensus: {verdictLabel(panel.consensus.verdict)} (
+                  {panel.consensus.confidence}%)
+                </span>
+              </div>
+              {panel.consensus.conflicts.length > 0 && (
                 <p className="text-faint">
-                  Decision support only. Each reviewer judges one axis; confirm
-                  eligibility with the study team.
+                  Split opinion: {panel.consensus.conflicts.join("; ")}.
                 </p>
-              </div>
-            )}
+              )}
+              <ul className="space-y-3">
+                {panel.reviewers.map((r) => (
+                  <li
+                    key={r.id}
+                    className="space-y-1 border-b border-border-subtle pb-3 last:border-0"
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-foreground font-medium">{r.role}</span>
+                      <span className={verdictTextClass(r.verdict)}>
+                        {verdictLabel(r.verdict)} ({r.confidence}%)
+                      </span>
+                    </div>
+                    <p className="text-faint">
+                      {r.focus}.{r.rationale ? ` ${r.rationale}` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div className="trial-actions">
@@ -1288,7 +1092,7 @@ function TrialCard({
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-faint">
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Baseline (condition match)</span>
+                <span>Baseline condition match</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.baseline}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
@@ -1300,28 +1104,12 @@ function TrialCard({
                 <span className="font-mono text-foreground font-semibold">+{bd.biomarkerMatch}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Biomarker exclusion penalties</span>
-                <span className={`font-mono font-semibold ${bd.biomarkerPenalties > 0 ? "text-destructive" : "text-foreground"}`}>
-                  {bd.biomarkerPenalties > 0 ? `-${bd.biomarkerPenalties}` : "0"}
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-border-subtle/40">
                 <span>Treatment objective alignment</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.interestsMatch}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Prior therapy alignment</span>
+                <span>Prior therapy compatibility</span>
                 <span className="font-mono text-foreground font-semibold">+{bd.priorTreatmentsMatch}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Disease stage alignment</span>
-                <span className="font-mono text-foreground font-semibold">+{bd.stageMatch}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                <span>Stage exclusion penalties</span>
-                <span className={`font-mono font-semibold ${bd.stagePenalties > 0 ? "text-destructive" : "text-foreground"}`}>
-                  {bd.stagePenalties > 0 ? `-${bd.stagePenalties}` : "0"}
-                </span>
               </div>
               <div className="flex justify-between py-1 border-b border-border-subtle/40">
                 <span>Study phase weighting</span>
@@ -1337,222 +1125,11 @@ function TrialCard({
                   {bd.sexMatch >= 0 ? `+${bd.sexMatch}` : bd.sexMatch}
                 </span>
               </div>
-              {bd.biomarkerGatesMatch !== undefined && bd.biomarkerGatesMatch > 0 && (
-                <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                  <span>Biomarker gate bonus</span>
-                  <span className="font-mono text-foreground font-semibold">+{bd.biomarkerGatesMatch}</span>
-                </div>
-              )}
-              {bd.washoutPenalties !== undefined && bd.washoutPenalties > 0 && (
-                <div className="flex justify-between py-1 border-b border-border-subtle/40">
-                  <span>Washout period penalties</span>
-                  <span className="font-mono text-destructive font-semibold font-body">-{bd.washoutPenalties}</span>
-                </div>
-              )}
-              <div className="flex justify-between py-2 border-t border-border-subtle font-semibold text-foreground mt-1">
-                <span>Composite match score</span>
-                <span className="font-mono text-primary font-bold text-sm">{trial.matchScore}%</span>
-              </div>
             </div>
           </div>
         )}
       </article>
     </li>
-  );
-}
-
-function ProfileSelector({
-  currentProfile,
-  onSelectProfile,
-}: {
-  currentProfile: PatientProfile;
-  onSelectProfile: (profile: PatientProfile) => void;
-}) {
-  const [profiles, setProfiles] = useState<Array<{ id: string; name: string; profile: PatientProfile }>>([]);
-  const [profileNameInput, setProfileNameInput] = useState("");
-  const [showSaveModal, setShowSaveModal] = useState(false);
-
-  useEffect(() => {
-    const loaded = localStorage.getItem("saved_profiles");
-    if (loaded) {
-      try {
-        // Client-only localStorage hydration on mount.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setProfiles(JSON.parse(loaded));
-      } catch (e) {
-        console.error("Failed to load saved profiles:", e);
-      }
-    }
-  }, []);
-
-  const saveCurrentProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!profileNameInput.trim()) return;
-
-    const newProfile = {
-      id: Math.random().toString(36).substring(2, 9),
-      name: profileNameInput.trim(),
-      profile: currentProfile,
-      timestamp: Date.now()
-    };
-
-    const updated = [...profiles, newProfile];
-    setProfiles(updated);
-    localStorage.setItem("saved_profiles", JSON.stringify(updated));
-    setProfileNameInput("");
-    setShowSaveModal(false);
-    alert("Patient profile saved to local storage.");
-  };
-
-  return (
-    <div className="space-y-3 pt-2">
-      <div className="flex justify-between items-center pb-2">
-        <h3 className="font-display text-lg text-foreground">Saved patient profiles</h3>
-        <button
-          type="button"
-          onClick={() => setShowSaveModal(true)}
-          className="text-xs font-semibold text-primary hover:underline cursor-pointer"
-        >
-          Save current
-        </button>
-      </div>
-
-      {profiles.length > 0 ? (
-        <select
-          onChange={(e) => {
-            const selected = profiles.find(p => p.id === e.target.value);
-            if (selected) {
-              sessionStorage.setItem("clinical_profile", JSON.stringify(selected.profile));
-              sessionStorage.removeItem("clinical_notes");
-              onSelectProfile(selected.profile);
-            }
-          }}
-          className="field-select text-xs font-body"
-          defaultValue=""
-        >
-          <option value="" disabled>Select a saved profile</option>
-          {profiles.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-      ) : (
-        <p className="text-xs text-faint italic font-body">No saved profiles on this device.</p>
-      )}
-
-      {showSaveModal && (
-        <div className="fixed inset-0 bg-foreground/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="modal-panel">
-            <h4 className="font-display text-base font-bold text-foreground">Save patient profile</h4>
-            <p className="text-xs text-faint font-body">
-              Assign a label. Data is stored locally in this browser only.
-            </p>
-            <input
-              type="text"
-              placeholder="e.g. Case reference 2026-01"
-              value={profileNameInput}
-              onChange={(e) => setProfileNameInput(e.target.value)}
-              className="field-input text-xs"
-              required
-            />
-            <div className="flex justify-end gap-4 text-xs">
-              <button
-                type="button"
-                onClick={() => setShowSaveModal(false)}
-                className="btn-ghost text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveCurrentProfile}
-                className="btn-primary text-xs min-h-9 px-4"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BiomarkerBooster({
-  profile,
-  onUpdate
-}: {
-  profile: PatientProfile;
-  onUpdate: (updatedProfile: PatientProfile) => void;
-}) {
-  const diagnosis = profile.primaryDiagnosis.toLowerCase();
-  const currentMarkers = new Set(profile.biomarkers.map(b => b.toLowerCase()));
-  
-  const suggestions: Array<{ marker: string; reason: string }> = [];
-
-  const addSuggestion = (marker: string, reason: string) => {
-    if (!currentMarkers.has(marker.toLowerCase())) {
-      suggestions.push({ marker, reason });
-    }
-  };
-
-  if (diagnosis.includes("breast")) {
-    addSuggestion("ER negative", "May expand eligibility for triple-negative and HR-negative trials");
-    addSuggestion("ER positive", "Relevant for endocrine and CDK4/6 inhibitor protocols");
-    addSuggestion("PIK3CA positive", "Required for PI3K-alpha inhibitor eligibility");
-    addSuggestion("BRCA1 positive", "Enables PARP inhibitor trial consideration");
-    addSuggestion("BRCA2 positive", "Enables PARP inhibitor trial consideration");
-  } else if (diagnosis.includes("lung") || diagnosis.includes("nsclc")) {
-    addSuggestion("EGFR positive", "Required for EGFR tyrosine kinase inhibitor trials");
-    addSuggestion("ALK positive", "Required for ALK inhibitor protocols");
-    addSuggestion("KRAS positive", "Relevant for KRAS G12C/G12D targeted studies");
-    addSuggestion("RET positive", "Required for selective RET inhibitor trials");
-    addSuggestion("ROS1 positive", "Required for ROS1-directed therapy studies");
-    addSuggestion("PD-L1 positive", "Relevant for checkpoint inhibitor protocols");
-  } else if (diagnosis.includes("colon") || diagnosis.includes("colorectal")) {
-    addSuggestion("KRAS wild-type", "Required for anti-EGFR antibody eligibility");
-    addSuggestion("BRAF positive", "Relevant for BRAF V600E combination protocols");
-    addSuggestion("MSI-high", "Enables immunotherapy trial consideration");
-  } else {
-    addSuggestion("MSI-high", "Relevant for tumor-agnostic immunotherapy trials");
-    addSuggestion("NTRK positive", "Required for TRK inhibitor protocols");
-    addSuggestion("TMB-high", "Relevant for checkpoint immunotherapy studies");
-  }
-
-  if (suggestions.length === 0) return null;
-
-  const handleAddMarker = (marker: string) => {
-    const updatedProfile = {
-      ...profile,
-      biomarkers: [...profile.biomarkers, marker]
-    };
-    onUpdate(updatedProfile);
-    alert(`"${marker}" added to biomarker profile. Refreshing match results.`);
-  };
-
-  return (
-    <div className="pt-4 space-y-3 text-left divider">
-      <h3 className="font-display text-lg text-foreground mt-4">Suggested biomarker testing</h3>
-      <p className="text-xs text-faint leading-relaxed font-body">
-        Trials for this diagnosis frequently require the following markers. Add confirmed results to refine matching:
-      </p>
-      <ul className="space-y-2.5 pt-1">
-        {suggestions.slice(0, 3).map((s, idx) => (
-          <li key={idx} className="flex justify-between items-start gap-3 py-2 border-b border-border-subtle text-xs font-body last:border-0">
-            <div className="space-y-0.5">
-              <span className="font-medium text-foreground block">{s.marker}</span>
-              <span className="text-xs text-faint block leading-tight">{s.reason}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleAddMarker(s.marker)}
-              className="btn-ghost text-xs shrink-0"
-            >
-              Add
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 
@@ -1588,16 +1165,18 @@ export default function ResultsDashboard({
     switch (key) {
       case "all":
         return trials.length;
+      case "likely-eligible-now":
       case "ready":
         return forecastTotals.ready;
-      case "upcoming":
-        return forecastTotals.upcoming;
       case "action-needed":
         return forecastTotals.actionNeeded;
       case "opens-later":
         return forecastTotals.opensLater;
+      case "not-a-match":
       case "likely-ineligible":
         return forecastTotals.likelyIneligible;
+      case "upcoming":
+        return forecastTotals.upcoming;
     }
   };
 
@@ -1607,7 +1186,6 @@ export default function ResultsDashboard({
         ? trials
         : trials.filter((t) => forecasts.get(t.trialId)?.status === readinessFilter);
 
-    // "Best match" keeps the server ranking (phase II+ first, then score).
     if (sortBy === "match") return filtered;
 
     const rankOf = (t: MatchedTrial) =>
@@ -1617,57 +1195,64 @@ export default function ResultsDashboard({
       if (sortBy === "readiness")
         return rankOf(a) - rankOf(b) || b.matchScore - a.matchScore;
       if (sortBy === "phase")
-        return parsePhaseRank(b.phase) - parsePhaseRank(a.phase) || b.matchScore - a.matchScore;
-      // "distance": closest first, trials without a distance sink to the bottom.
-      const da = a.distance ?? Number.POSITIVE_INFINITY;
-      const db = b.distance ?? Number.POSITIVE_INFINITY;
-      return da - db || b.matchScore - a.matchScore;
+        return (
+          parsePhaseRank(b.phase) - parsePhaseRank(a.phase) ||
+          b.matchScore - a.matchScore
+        );
+      if (sortBy === "distance") {
+        const da = a.distance ?? Infinity;
+        const db = b.distance ?? Infinity;
+        return da - db || b.matchScore - a.matchScore;
+      }
+      return 0;
     });
-  }, [trials, forecasts, sortBy, readinessFilter]);
-
-  const handleAddReminder = (trial: MatchedTrial, forecast: EligibilityForecast) => {
-    const event = buildReminderEvent(trial, forecast);
-    if (!event) return;
-    triggerDownload(
-      buildIcsCalendar([event], { calendarName: "Trial eligibility reminder" }),
-      `eligibility-${trial.trialId}.ics`,
-      "text/calendar;charset=utf-8"
-    );
-  };
+  }, [trials, forecasts, readinessFilter, sortBy]);
 
   const handleExportAllReminders = () => {
     const events: CalendarEvent[] = [];
-    for (const t of trials) {
-      const forecast = forecasts.get(t.trialId);
-      const event = forecast ? buildReminderEvent(t, forecast) : null;
-      if (event) events.push(event);
+    for (const trial of trials) {
+      const forecast = forecasts.get(trial.trialId);
+      if (forecast) {
+        const ev = buildReminderEvent(trial, forecast);
+        if (ev) events.push(ev);
+      }
     }
     if (events.length === 0) return;
     triggerDownload(
-      buildIcsCalendar(events, { calendarName: "Trial eligibility reminders" }),
+      buildIcsCalendar(events, { calendarName: "Clinical trial eligibility reminders" }),
       "trial-eligibility-reminders.ics",
       "text/calendar;charset=utf-8"
     );
   };
 
+  const handleAddSingleReminder = (
+    trial: MatchedTrial,
+    forecast: EligibilityForecast
+  ) => {
+    const ev = buildReminderEvent(trial, forecast);
+    if (!ev) return;
+    triggerDownload(
+      buildIcsCalendar([ev], {
+        calendarName: `Eligibility reminder: ${trial.trialId}`,
+      }),
+      `reminder-${trial.trialId}.ics`,
+      "text/calendar;charset=utf-8"
+    );
+  };
+
   useEffect(() => {
-    // Reset view state when a new search result (data prop) arrives.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDisplayData(data);
-    setWhoSearchState("idle");
-    whoSearchStartedRef.current = false;
   }, [data]);
 
   useEffect(() => {
     const whoSummary = data.registrySummaries.find(
-      (summary) => summary.registry === "WHO ICTRP"
+      (s) => s.registry === "WHO ICTRP"
     );
-    const shouldSearchWho =
-      whoSummary &&
-      (whoSummary.error === "WHO_ICTRP_BROWSER_REQUIRED" ||
-        whoSummary.trialCount === 0);
-
-    if (!shouldSearchWho || whoSearchStartedRef.current) {
+    if (
+      !whoSummary ||
+      whoSummary.error !== "WHO_ICTRP_BROWSER_REQUIRED" ||
+      whoSearchStartedRef.current
+    ) {
       return;
     }
 
@@ -1676,9 +1261,9 @@ export default function ResultsDashboard({
     setWhoSearchState("loading");
 
     const searchCondition =
-      data.queryTerms.slice(0, 2).join(" ") ||
+      data.queryTerms?.[0] ||
       data.profile.primaryDiagnosis ||
-      "cancer";
+      "clinical trial";
 
     (async () => {
       try {
@@ -1729,11 +1314,8 @@ export default function ResultsDashboard({
     if (prev) {
       const newIds = currentIds.filter(id => !prev.trialIds.includes(id));
       if (newIds.length > 0) {
-        // Derived from client-only localStorage comparison on mount.
-        /* eslint-disable react-hooks/set-state-in-effect */
         setNewMatchesCount(newIds.length);
         setLastSearchDate(new Date(prev.timestamp).toLocaleDateString());
-        /* eslint-enable react-hooks/set-state-in-effect */
       }
     }
 
@@ -1749,8 +1331,6 @@ export default function ResultsDashboard({
     const saved = localStorage.getItem("saved_clinical_trials");
     if (saved) {
       try {
-        // Client-only localStorage hydration on mount.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSavedTrials(JSON.parse(saved));
       } catch (err) {
         console.error("Failed to parse saved trials:", err);
@@ -1842,6 +1422,14 @@ export default function ResultsDashboard({
     );
   };
 
+  const totalCandidatesAcrossRegistries = displayData.registrySummaries.reduce(
+    (acc, s) => acc + s.trialCount,
+    0
+  );
+  const allRegistriesFailed = displayData.registrySummaries.every(
+    (s) => s.error && s.error !== "WHO_ICTRP_BROWSER_REQUIRED"
+  );
+
   return (
     <div className="results-page space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -1900,13 +1488,6 @@ export default function ResultsDashboard({
             summaries={displayData.registrySummaries}
             whoSearchState={whoSearchState}
           />
-          <details className="tools-disclosure">
-            <summary>Refine &amp; tools</summary>
-            <div className="space-y-6">
-              <BiomarkerBooster profile={profile} onUpdate={onProfileUpdate} />
-              <ProfileSelector currentProfile={profile} onSelectProfile={onProfileUpdate} />
-            </div>
-          </details>
         </aside>
 
         <div className="lg:col-span-8 order-2 min-w-0">
@@ -1917,12 +1498,20 @@ export default function ResultsDashboard({
               }`}
             >
               {trials.length === 0 ? (
-                <div className="py-16 text-center">
+                <div className="py-16 text-center space-y-3">
                   <p className="font-display text-2xl text-foreground">
-                    No matching studies identified
+                    {allRegistriesFailed
+                      ? "Search failed across registries"
+                      : totalCandidatesAcrossRegistries > 0
+                      ? "No trials appear to match the available patient information"
+                      : "No studies found"}
                   </p>
-                  <p className="section-hint mt-2 max-w-sm mx-auto font-body">
-                    Consider broadening diagnosis, location, or biomarker criteria and search again.
+                  <p className="section-hint max-w-md mx-auto font-body text-sm">
+                    {allRegistriesFailed
+                      ? "The public registry servers could not be reached. Please check your connection and try again."
+                      : totalCandidatesAcrossRegistries > 0
+                      ? `${totalCandidatesAcrossRegistries} candidate studies were identified in public registries, but none met the minimum estimated eligibility fit for this clinical profile.`
+                      : "No clinical studies were returned for this condition. Consider broadening the diagnosis or search criteria."}
                   </p>
                 </div>
               ) : (
@@ -1937,11 +1526,11 @@ export default function ResultsDashboard({
                         Trial readiness forecast
                       </h3>
                       <p className="section-hint text-sm font-body mt-1 leading-relaxed">
-                        Not just what matches today, but when you could become eligible.
+                        Forward-looking eligibility assessment based on public criteria.
                         {forecastTotals.nextDate && (
                           <>
                             {" "}
-                            Next eligibility window:{" "}
+                            Next projected window:{" "}
                             <span className="text-foreground font-medium">
                               {formatForecastDate(forecastTotals.nextDate)}
                             </span>
@@ -2033,69 +1622,62 @@ export default function ResultsDashboard({
                           index={index}
                           isSaved={Boolean(savedTrials.find((t) => t.trial.trialId === trial.trialId))}
                           onSaveToggle={() => handleSaveToggle(trial)}
-                          onAddReminder={handleAddReminder}
+                          onAddReminder={handleAddSingleReminder}
                         />
                       ))}
                     </ol>
                   ) : (
-                    <p className="section-hint py-10 text-center font-body">
-                      No trials in this category.{" "}
-                      <button
-                        type="button"
-                        onClick={() => setReadinessFilter("all")}
-                        className="text-primary underline underline-offset-2"
-                      >
-                        Show all
-                      </button>
-                    </p>
+                    <div className="py-12 text-center text-faint text-sm font-body">
+                      No trials match the selected readiness filter ({readinessFilter}).
+                    </div>
                   )}
-
-                  <p className="section-hint mt-8 text-xs max-w-2xl font-body">
-                    Match scores and eligibility forecasts are algorithmic estimates based on
-                    submitted clinical information. Eligibility must be confirmed by the treating
-                    physician or study coordinator.
-                  </p>
                 </section>
               )}
             </div>
           ) : (
-            <div className="space-y-8">
-              <div>
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
                 <h3 className="font-display text-lg text-foreground">Trial shortlist</h3>
-                <p className="section-hint text-xs mt-1 font-body">
-                  Track recruitment status for each study. Data is stored locally in this browser.
-                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExportCSV}
+                    disabled={savedTrials.length === 0}
+                    className="btn-ghost text-xs disabled:opacity-40"
+                  >
+                    Export CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowGuideModal(true)}
+                    disabled={savedTrials.length === 0}
+                    className="btn-primary text-xs min-h-9 px-4 disabled:opacity-40"
+                  >
+                    Consultation guide
+                  </button>
+                </div>
               </div>
 
-              <div className="flex gap-10 overflow-x-auto pb-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 {columns.map((col) => {
                   const items = savedTrials.filter((t) => t.boardStatus === col);
                   return (
-                    <div key={col} className="board-column">
-                      <h4 className="board-column-title">
-                        {colLabels[col]}{" "}
-                        <span className="text-faint font-body font-normal">({items.length})</span>
-                      </h4>
-
-                      <ul className="space-y-0 min-h-[200px] divide-y divide-border-subtle">
-                        {items.map((item) => {
-                          const f = forecastTrialEligibility(item.trial, profile);
-                          return (
-                          <li key={item.trial.trialId} className="py-4 space-y-2 font-body first:pt-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="registry-chip">{item.trial.registry}</span>
-                              <span
-                                className={`readiness-chip ${readinessChipClass(f.status)}`}
-                                title={f.summary}
-                              >
-                                <span className="readiness-dot" aria-hidden="true" />
-                                {f.label}
-                              </span>
-                            </div>
-                            <h4 className="font-display text-xs text-foreground line-clamp-3 leading-snug">
+                    <div key={col} className="bg-surface-muted p-3 rounded border border-border-subtle flex flex-col min-h-[300px]">
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="font-semibold text-xs text-foreground font-body">{colLabels[col]}</span>
+                        <span className="text-xs text-faint bg-surface px-1.5 py-0.5 rounded border border-border-subtle font-mono">
+                          {items.length}
+                        </span>
+                      </div>
+                      <ul className="space-y-2.5 flex-1">
+                        {items.map((item) => (
+                          <li key={item.trial.trialId} className="p-2.5 bg-surface rounded border border-border text-xs space-y-1.5 shadow-sm font-body">
+                            <span className="font-semibold text-foreground line-clamp-2 block leading-snug">
                               {item.trial.title}
-                            </h4>
-                            <p className="text-xs text-faint">{item.trial.trialId}</p>
+                            </span>
+                            <span className="text-faint text-[10px] block font-mono">
+                              {item.trial.registry} &bull; {item.trial.trialId}
+                            </span>
 
                             <select
                               value={item.boardStatus}
@@ -2117,10 +1699,9 @@ export default function ResultsDashboard({
                               Remove
                             </button>
                           </li>
-                          );
-                        })}
+                        ))}
                         {items.length === 0 && (
-                          <li className="py-8 text-faint text-xs italic font-body">
+                          <li className="py-8 text-faint text-xs italic font-body text-center">
                             No studies in this stage
                           </li>
                         )}
@@ -2140,7 +1721,7 @@ export default function ResultsDashboard({
             
             <div className="flex justify-between items-start pb-4 divider no-print">
               <div>
-                <h3 className="font-display text-xl text-foreground">Oncology consultation guide</h3>
+                <h3 className="font-display text-xl text-foreground">Clinical consultation guide</h3>
                 <p className="section-hint text-xs mt-1 font-body">Prepared for review at the next clinical appointment.</p>
               </div>
               <div className="flex gap-4">
@@ -2176,7 +1757,7 @@ export default function ResultsDashboard({
             </div>
 
             <div className="hidden print:block border-b border-foreground pb-4">
-              <h2 className="text-2xl font-bold text-foreground">Clinical Trial Matcher: Oncology Discussion Guide</h2>
+              <h2 className="text-2xl font-bold text-foreground">Clinical Trial Matcher: Discussion Guide</h2>
               <p className="text-sm text-faint mt-1 font-body">Date: {new Date().toLocaleDateString()}</p>
             </div>
 
@@ -2192,22 +1773,20 @@ export default function ResultsDashboard({
                   <span className="font-medium text-foreground">{profile.primaryDiagnosis}</span>
                 </div>
                 <div>
-                  <span className="block text-xs font-semibold text-faint">Cancer Stage</span>
-                  <span className="font-medium text-foreground">{profile.stage ?? "Not specified"}</span>
+                  <span className="block text-xs font-semibold text-faint">Subtype / Stage</span>
+                  <span className="font-medium text-foreground">{profile.subtype ?? profile.stage ?? "Not specified"}</span>
                 </div>
                 <div>
-                  <span className="block text-xs font-semibold text-faint">Biomarkers</span>
-                  <span className="font-medium text-foreground">{profile.biomarkers.length > 0 ? profile.biomarkers.join(", ") : "None specified"}</span>
+                  <span className="block text-xs font-semibold text-faint">Current Therapy</span>
+                  <span className="font-medium text-foreground">{profile.currentTreatment ?? "None specified"}</span>
                 </div>
                 <div>
                   <span className="block text-xs font-semibold text-faint">Prior Treatments</span>
                   <span className="font-medium text-foreground">{profile.priorTreatments.length > 0 ? profile.priorTreatments.join(", ") : "None specified"}</span>
                 </div>
                 <div>
-                  <span className="block text-xs font-semibold text-faint">Metastatic Status</span>
-                  <span className="font-medium text-foreground">
-                    {profile.hasMetastaticDisease === true ? "Metastatic" : profile.hasMetastaticDisease === false ? "Non-metastatic" : "Unknown"}
-                  </span>
+                  <span className="block text-xs font-semibold text-faint">Location</span>
+                  <span className="font-medium text-foreground">{formatLocationDisplay(profile.location) ?? "Not specified"}</span>
                 </div>
               </div>
             </section>
@@ -2255,32 +1834,11 @@ export default function ResultsDashboard({
               </ul>
             </section>
 
-            <style>{`
-              @media print {
-                body {
-                  background: white !important;
-                  color: black !important;
-                  font-size: 12px;
-                }
-                .no-print, header, footer, aside, button, select, Link, a.btn-secondary {
-                  display: none !important;
-                }
-                #print-area {
-                  border: none !important;
-                  box-shadow: none !important;
-                  padding: 0 !important;
-                  max-height: none !important;
-                  overflow: visible !important;
-                  position: absolute;
-                  left: 0;
-                  top: 0;
-                  width: 100%;
-                }
-                .page-break-avoid {
-                  page-break-inside: avoid;
-                }
-              }
-            `}</style>
+            <div className="pt-6 border-t border-border-subtle text-xs text-faint leading-relaxed font-body">
+              <p>
+                <strong>Disclaimer:</strong> For informational purposes only. This tool does not provide medical advice, diagnosis, or treatment recommendations and cannot enroll patients in studies. Eligibility estimates are based on publicly available trial criteria and the information provided. Confirm eligibility directly with the study team or an appropriate healthcare professional.
+              </p>
+            </div>
           </div>
         </div>
       )}

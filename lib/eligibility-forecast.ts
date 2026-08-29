@@ -5,26 +5,14 @@ import type {
 } from "@/lib/types";
 import { isOpenRecruitmentStatus, normalizeStatus } from "@/lib/registries/filters";
 
-/**
- * Eligibility Forecast
- * --------------------
- * Most trial matchers answer "which trials match me today?". This answers the
- * forward-looking question no public matcher does: "WHEN do I become eligible,
- * and what is blocking me right now?".
- *
- * It is derived entirely from signals already computed during scoring
- * (washout checks, biomarker gates, sex/stage penalties, recruitment status)
- * plus the patient's own treatment timeline, so it adds no new data sources and
- * runs fully client-side. Nothing here is medical advice; it organizes
- * registry-stated requirements into a personal readiness view.
- */
-
 export type ReadinessStatus =
-  | "ready" // recruiting and no time-based blockers detected
-  | "upcoming" // becomes eligible on a known future date (washout clears)
-  | "action-needed" // resolvable: missing test, undated therapy, or active washout
-  | "opens-later" // trial is not yet recruiting
-  | "likely-ineligible"; // a hard, registry-stated restriction is contradicted
+  | "ready"
+  | "upcoming"
+  | "action-needed"
+  | "opens-later"
+  | "likely-ineligible"
+  | "likely-eligible-now"
+  | "not-a-match";
 
 export interface EligibilityForecast {
   status: ReadinessStatus;
@@ -57,7 +45,6 @@ function findTreatment(
   return timeline.find((t) => t.name.toLowerCase() === key);
 }
 
-/** Pick the later of two ISO dates (either may be null). */
 function maxIso(a: string | null, b: string | null): string | null {
   if (!a) return b;
   if (!b) return a;
@@ -83,7 +70,7 @@ export function forecastTrialEligibility(
   const actions: string[] = [];
   const bd = trial.scoreBreakdown;
 
-  // 1. Hard, registry-stated restrictions the patient definitively contradicts.
+  // 1. Hard, registry-stated restrictions the patient profile explicitly contradicts
   const hardBlockers: string[] = [];
   if (bd.sexMatch < 0) {
     hardBlockers.push("Trial restricts enrollment by sex");
@@ -98,7 +85,7 @@ export function forecastTrialEligibility(
     hardBlockers.push("A required biomarker conflicts with your profile");
   }
 
-  // 2. Time-based blockers (washout) and resolvable actions.
+  // 2. Washout & therapy timing
   let earliestDate: string | null = null;
   let hasActiveTherapyBlock = false;
 
@@ -112,7 +99,6 @@ export function forecastTrialEligibility(
       continue;
     }
 
-    // status === "ineligible"
     const treatment = findTreatment(profile.priorTreatmentsTimeline, check.treatmentName);
     if (treatment?.ongoing) {
       hasActiveTherapyBlock = true;
@@ -130,15 +116,13 @@ export function forecastTrialEligibility(
         `${check.treatmentName} washout (${check.requiredDays} days) not yet met`
       );
     } else {
-      // ineligible but no usable date: treat as resolvable.
       actions.push(
         `Confirm timing of ${check.treatmentName} for the ${check.requiredDays}-day washout`
       );
     }
   }
 
-  // 3. Biomarker gates failed without an explicit contradiction → unknown markers
-  //    the patient should confirm (only when there was no hard biomarker block).
+  // 3. Biomarker gates failed without an explicit contradiction
   if (bd.biomarkerPenalties === 0) {
     for (const gate of trial.biomarkerGates ?? []) {
       if (gate.passed) continue;
@@ -156,11 +140,11 @@ export function forecastTrialEligibility(
     isOpenRecruitmentStatus(trial.status) &&
     normalizeStatus(trial.status).includes("NOT YET");
 
-  // 4. Classify (worst-case first).
+  // 4. Classify into readiness categories:
   if (hardBlockers.length > 0) {
     return {
       status: "likely-ineligible",
-      label: "Likely ineligible",
+      label: "Not a match",
       summary: hardBlockers[0] + ". Confirm with the study team before ruling it out.",
       earliestDate: null,
       blockers: hardBlockers,
@@ -217,8 +201,8 @@ export function forecastTrialEligibility(
 
   return {
     status: "ready",
-    label: "Ready to discuss",
-    summary: "Recruiting now with no time-based blockers detected from your profile.",
+    label: "Likely eligible now",
+    summary: "Strong match to known criteria with no known disqualifying factors and actively recruiting.",
     earliestDate: null,
     blockers,
     actions,
@@ -231,7 +215,6 @@ export interface ForecastTotals {
   actionNeeded: number;
   opensLater: number;
   likelyIneligible: number;
-  /** Earliest upcoming eligibility date across all trials, if any. */
   nextDate: string | null;
 }
 
@@ -250,6 +233,7 @@ export function summarizeForecasts(
   for (const f of forecasts) {
     switch (f.status) {
       case "ready":
+      case "likely-eligible-now":
         totals.ready++;
         break;
       case "upcoming":
@@ -268,6 +252,7 @@ export function summarizeForecasts(
         totals.opensLater++;
         break;
       case "likely-ineligible":
+      case "not-a-match":
         totals.likelyIneligible++;
         break;
     }

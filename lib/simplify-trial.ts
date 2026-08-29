@@ -124,7 +124,7 @@ export async function generateSimplifiedTrialGuide(
     messages: [
       {
         role: "system",
-        content: `Prepare patient-facing oncology consultation materials.
+        content: `Prepare patient-facing clinical trial consultation materials.
 Rules:
 - Use professional language at an accessible reading level. Define medical terms briefly.
 - Do not use em dashes or en dashes. Use commas, periods, or "and" instead.

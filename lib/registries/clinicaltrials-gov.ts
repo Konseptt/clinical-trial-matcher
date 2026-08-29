@@ -1,12 +1,10 @@
 import { capTrialSummary } from "@/lib/format";
 import type { ClinicalTrialsGovResponse, ClinicalTrialsGovStudy } from "@/lib/types";
-import { resolveRegistryCountry } from "@/lib/location";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
 
 const API_BASE = "https://clinicaltrials.gov/api/v2/studies";
 
 function sanitizeQueryParam(val: string): string {
-  // Keep only letters, numbers, spaces, hyphens, and slashes to prevent query injection
   return val.replace(/[^a-zA-Z0-9\s\-\/]/g, "").trim();
 }
 
@@ -14,13 +12,11 @@ export function normalizePhase(phases?: string[]): string {
   if (!phases || phases.length === 0) return "Not specified";
   return phases
     .map((p) => {
-      // ClinicalTrials.gov v2 enum: PHASE1..PHASE4, EARLY_PHASE1, NA.
       const key = p.toUpperCase().trim();
       if (key === "NA") return "Not Applicable";
       if (key === "EARLY_PHASE1") return "Early Phase 1";
       const m = key.match(/^PHASE(\d)$/);
       if (m) return `Phase ${m[1]}`;
-      // Unknown token: prettify rather than emit "Phase <garbage>".
       const num = key.replace(/PHASE/g, "").replace(/_/g, " ").trim();
       return num ? `Phase ${num}` : p;
     })
@@ -42,7 +38,7 @@ export function mapStudy(study: ClinicalTrialsGovStudy): RegistryTrial {
         "No summary available."
     ),
     status: study.protocolSection.statusModule.overallStatus,
-    locations: locations.slice(0, 4).map((loc) => ({
+    locations: locations.slice(0, 10).map((loc) => ({
       facility: loc.facility ?? "Facility not listed",
       city: loc.city ?? "",
       state: loc.state ?? "",
@@ -54,30 +50,15 @@ export function mapStudy(study: ClinicalTrialsGovStudy): RegistryTrial {
   };
 }
 
-function buildAdvancedFilter(params: RegistrySearchParams): string {
-  const phaseFilter =
-    "(AREA[Phase]PHASE2 OR AREA[Phase]PHASE3 OR AREA[Phase]PHASE4)";
-
-  const country = resolveRegistryCountry(params.location);
-  if (country) {
-    const cleanCountry = sanitizeQueryParam(country);
-    if (cleanCountry) {
-      return `${phaseFilter} AND AREA[LocationCountry]${cleanCountry}`;
-    }
-  }
-
-  return phaseFilter;
-}
-
 export async function queryClinicalTrialsGov(
   params: RegistrySearchParams
 ): Promise<RegistryQueryResult> {
   const sanitizedCondition = sanitizeQueryParam(params.condition);
   
   const searchParams = new URLSearchParams({
-    "query.cond": sanitizedCondition || "cancer",
-    "filter.overallStatus": "RECRUITING,NOT_YET_RECRUITING",
-    pageSize: "25",
+    "query.cond": sanitizedCondition || "clinical trial",
+    "filter.overallStatus": "RECRUITING,NOT_YET_RECRUITING,ENROLLING_BY_INVITATION,ACTIVE_NOT_RECRUITING",
+    pageSize: "30",
     format: "json",
     fields:
       "NCTId,BriefTitle,OfficialTitle,OverallStatus,Phase,BriefSummary,EligibilityCriteria,Sex,MinimumAge,MaximumAge,LocationFacility,LocationCity,LocationState,LocationCountry",
@@ -90,13 +71,9 @@ export async function queryClinicalTrialsGov(
       .slice(0, 2);
 
     if (biomarkerTerms.length > 0) {
-      // Join with OR (Essie syntax) so the second biomarker isn't dropped;
-      // the slice(0, 2) intended to search both, not just the first.
       searchParams.set("query.term", biomarkerTerms.join(" OR "));
     }
   }
-
-  searchParams.set("filter.advanced", buildAdvancedFilter(params));
 
   const response = await fetch(`${API_BASE}?${searchParams.toString()}`, {
     headers: { Accept: "application/json" },

@@ -1,4 +1,5 @@
 import type { PatientLocation, PatientProfile } from "@/lib/types";
+import { normalizeCondition } from "@/lib/normalization";
 
 export type RegistrySource =
   | "ClinicalTrials.gov"
@@ -8,6 +9,7 @@ export type RegistrySource =
 
 export interface RegistrySearchParams {
   condition: string;
+  subtype: string | null;
   terms: string[];
   biomarkers: string[];
   location: PatientLocation | null;
@@ -42,64 +44,48 @@ export interface RegistryQueryResult {
 export function buildRegistrySearchParams(
   profile: PatientProfile
 ): RegistrySearchParams {
+  const norm = normalizeCondition(profile.primaryDiagnosis);
   const terms: string[] = [];
 
-  if (
-    profile.primaryDiagnosis &&
-    profile.primaryDiagnosis !== "unspecified condition"
-  ) {
+  // 1. Add canonical name
+  if (norm.canonicalName && norm.canonicalName !== "unspecified condition") {
+    terms.push(norm.canonicalName);
+  } else if (profile.primaryDiagnosis && profile.primaryDiagnosis !== "unspecified condition") {
     terms.push(profile.primaryDiagnosis);
   }
 
-  for (const marker of profile.biomarkers.slice(0, 3)) {
-    terms.push(marker);
+  // 2. Add subtype if available
+  const subtype = profile.subtype || norm.subtype || null;
+  if (subtype) {
+    terms.push(subtype.replace(/\s*\([^)]*\)/g, "").trim());
   }
 
-  if (terms.length === 0) {
-    terms.push("cancer");
-  }
-
-  let condition = profile.primaryDiagnosis
-    .replace(/^\s*stage\s+[ivx0-9]+[abc]?\s+/i, "")
-    .replace(/\b(stage\s+[ivx0-9]+[abc]?)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const lower = condition.toLowerCase();
-  for (const cancerType of [
-    "breast cancer",
-    "lung cancer",
-    "melanoma",
-    "lymphoma",
-    "leukemia",
-    "colorectal cancer",
-    "colon cancer",
-    "prostate cancer",
-    "ovarian cancer",
-    "pancreatic cancer",
-    "hepatocellular",
-    "renal cell",
-    "bladder cancer",
-    "gastric cancer",
-    "esophageal cancer",
-    "endometrial cancer",
-    "cervical cancer",
-    "head and neck",
-    "thyroid cancer",
-    "mesothelioma",
-    "sarcoma",
-    "glioblastoma",
-    "multiple myeloma",
-  ]) {
-    if (lower.includes(cancerType)) {
-      condition = cancerType;
-      break;
+  // 3. Add synonyms
+  for (const syn of norm.synonyms) {
+    if (!terms.includes(syn)) {
+      terms.push(syn);
     }
   }
 
+  // 4. Add biomarkers if available
+  for (const marker of profile.biomarkers.slice(0, 3)) {
+    if (!terms.includes(marker)) {
+      terms.push(marker);
+    }
+  }
+
+  if (terms.length === 0) {
+    terms.push("clinical trial");
+  }
+
+  const cleanCondition = norm.canonicalName !== "unspecified condition"
+    ? norm.canonicalName
+    : terms[0];
+
   return {
-    condition: condition || terms[0],
-    terms,
+    condition: cleanCondition,
+    subtype,
+    terms: terms.slice(0, 5),
     biomarkers: profile.biomarkers,
     location: profile.location,
   };

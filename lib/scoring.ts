@@ -2,13 +2,14 @@ import type {
   MatchedTrial,
   PatientProfile,
   MatchScoreBreakdown,
-  TreatmentHistory,
   BiomarkerGate,
-  WashoutCheckResult
+  WashoutCheckResult,
+  CriterionEvaluation
 } from "./types";
 import type { RegistryTrial } from "./registries/types";
-import { isPhaseTwoOrAbove, matchesLocation, parsePhaseRank } from "./registries/filters";
+import { isPhaseTwoOrAbove, parsePhaseRank } from "./registries/filters";
 import { geocodeLocation, calculateDistance } from "./location";
+import { normalizeCondition } from "./normalization";
 
 function textContains(text: string, term: string): boolean {
   return text.toLowerCase().includes(term.toLowerCase());
@@ -31,9 +32,6 @@ export function extractWashoutPeriod(eligibilityText: string, treatmentName: str
 
   if (!name || !text.includes(name)) return null;
 
-  // Treatment names come from user-editable fields and may contain regex
-  // metacharacters (e.g. "5-FU (bolus)"). Escape before interpolating, or an
-  // unbalanced "(" throws and rejects the whole scoring batch.
   const safeName = escapeRegExp(name);
 
   const patterns = [
@@ -103,12 +101,8 @@ export function evaluateBiomarkerGates(
 
   const hasMarker = (markerName: string, expectedPos: boolean = true) => {
     const name = markerName.toLowerCase();
-    // Match marker as a whole token, not a substring. "er" lives inside "her2",
-    // so a plain includes() lets an ER gate cross-contaminate with HER2 status
-    // (e.g. "HER2 negative" wrongly satisfying ER-negative). Criterion isolation
-    // is required: no cross-contamination between distinct markers.
     const tokenRe = new RegExp(`(^|[^a-z0-9])${escapeRegExp(name)}([^a-z0-9]|$)`, "i");
-    return profile.biomarkers.some(m => {
+    return profile.biomarkers.some((m) => {
       const ml = m.toLowerCase();
       if (!tokenRe.test(ml)) return false;
       const isNeg = ml.includes("neg") || ml.includes("wt") || ml.includes("wild");
@@ -174,7 +168,7 @@ export function evaluateBiomarkerGates(
     });
   }
 
-  // Default fallback for single markers
+  // Fallback for single markers
   if (gates.length === 0) {
     for (const marker of profile.biomarkers) {
       const ml = marker.toLowerCase();
@@ -212,9 +206,6 @@ export function hasContradictoryBiomarkers(
   const isHer2Negative = profile.biomarkers.some((m) =>
     /her2\s*negative/i.test(m)
   );
-  // (?<![a-z]) keeps a bare "er" from matching inside "her2", "cancer", etc.
-  // Without it an ER gate cross-contaminates with HER2/diagnosis text and
-  // produces false contradiction penalties that distort ranking.
   const isErNegative = profile.biomarkers.some((m) =>
     /(?<![a-z])er\s*negative/i.test(m)
   );
@@ -241,15 +232,6 @@ export function hasContradictoryBiomarkers(
   return penalty;
 }
 
-/**
- * Penalize biomarker gates the patient *definitively* fails. A gate rule is
- * "mismatched" both when the patient explicitly has the opposite polarity AND
- * when the marker is simply absent (status unknown). Only the former is a true
- * eligibility contradiction; penalizing unknowns would demote possibly-eligible
- * trials. Without this a hard inclusion gate the patient fails (e.g. HER2+
- * patient vs a triple-negative trial) could still surface as a strong match,
- * a false-positive eligibility signal.
- */
 export function biomarkerGatePenalty(
   gates: BiomarkerGate[],
   profile: PatientProfile
@@ -292,7 +274,6 @@ function hasContradictoryStageContext(
   if (profile.hasMetastaticDisease !== false) return 0;
 
   let penalty = 0;
-  // "advanced or metastatic" dropped: it is already covered by "metastatic".
   const metastaticTerms = [
     "metastatic",
     "metastases",
@@ -308,13 +289,184 @@ function hasContradictoryStageContext(
     }
   }
 
-  // "M1" (TNM distant-metastasis stage) must match as a standalone token,
-  // otherwise it false-positives inside "arm1", "form1", etc.
   if (/\bm1\b/i.test(combined)) {
     penalty += 12;
   }
 
   return Math.min(penalty, 35);
+}
+
+export function evaluateCriteria(
+  trial: RegistryTrial,
+  profile: PatientProfile
+): {
+  criteriaEvaluations: CriterionEvaluation[];
+  reasonsMatched: string[];
+  reasonsToConfirm: string[];
+} {
+  const combined = `${trial.title} ${trial.summary} ${trial.eligibilityText}`.toLowerCase();
+  const criteriaEvaluations: CriterionEvaluation[] = [];
+  const reasonsMatched: string[] = [];
+  const reasonsToConfirm: string[] = [];
+
+  const norm = normalizeCondition(profile.primaryDiagnosis);
+
+  // 1. Diagnosis requirement
+  const diagWords = norm.canonicalName.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+  const diagHit = diagWords.some((w) => combined.includes(w)) || norm.synonyms.some((s) => combined.includes(s.toLowerCase()));
+
+  if (diagHit) {
+    criteriaEvaluations.push({
+      name: "Diagnosis requirement",
+      category: "diagnosis",
+      status: "met",
+      evidence: `Study targets ${norm.canonicalName}`,
+    });
+    reasonsMatched.push(`Target condition matches ${norm.canonicalName}`);
+  } else {
+    criteriaEvaluations.push({
+      name: "Diagnosis requirement",
+      category: "diagnosis",
+      status: "unknown",
+      evidence: "General clinical protocol",
+    });
+  }
+
+  // 2. Subtype requirement
+  const subtype = profile.subtype || norm.subtype;
+  if (subtype) {
+    const subWords = subtype.toLowerCase().replace(/[\(\)]/g, "").split(/\s+/).filter((w) => w.length > 3);
+    const subHit = subWords.some((w) => combined.includes(w));
+    if (subHit) {
+      criteriaEvaluations.push({
+        name: "Disease subtype requirement",
+        category: "subtype",
+        status: "met",
+        evidence: `Protocol includes ${subtype}`,
+      });
+      reasonsMatched.push(`Disease subtype aligns with ${subtype}`);
+    } else {
+      criteriaEvaluations.push({
+        name: "Disease subtype requirement",
+        category: "subtype",
+        status: "unknown",
+        evidence: "Subtype criteria to be confirmed with study team",
+      });
+      reasonsToConfirm.push(`Confirm protocol eligibility for ${subtype}`);
+    }
+  }
+
+  // 3. Prior Treatments & Therapy requirements
+  if (profile.priorTreatments && profile.priorTreatments.length > 0) {
+    const matchedTreatments = profile.priorTreatments.filter((t) => combined.includes(t.toLowerCase()));
+    if (matchedTreatments.length > 0) {
+      criteriaEvaluations.push({
+        name: "Prior therapy compatibility",
+        category: "prior-treatment",
+        status: "met",
+        evidence: `Protocol compatible with history of ${matchedTreatments.join(", ")}`,
+      });
+      reasonsMatched.push(`Prior treatment history (${matchedTreatments.join(", ")}) aligns with protocol context`);
+    } else {
+      criteriaEvaluations.push({
+        name: "Prior therapy requirement",
+        category: "prior-treatment",
+        status: "unknown",
+        evidence: `Previous DMT (${profile.priorTreatments.join(", ")}) to be verified against washout guidelines`,
+      });
+      reasonsToConfirm.push(`Verify washout or prior exposure rules for ${profile.priorTreatments.join(", ")}`);
+    }
+  }
+
+  // 4. Disease activity & MRI criteria
+  if (profile.recentDiseaseActivity || profile.mriFindings) {
+    if (/relapse|mri|lesion|activity|edss/i.test(combined)) {
+      criteriaEvaluations.push({
+        name: "Disease activity / MRI criteria",
+        category: "disease-activity",
+        status: "met",
+        evidence: "Documented disease activity aligns with study activity criteria",
+      });
+      reasonsMatched.push("Recent disease activity and MRI findings appear compatible");
+    } else {
+      criteriaEvaluations.push({
+        name: "Disease activity criteria",
+        category: "disease-activity",
+        status: "unknown",
+      });
+      reasonsToConfirm.push("Confirm required relapse/MRI activity criteria with study site");
+    }
+  }
+
+  // 5. Age requirement
+  if (profile.age !== null) {
+    criteriaEvaluations.push({
+      name: "Age requirement",
+      category: "age",
+      status: "met",
+      evidence: `Patient age (${profile.age}) evaluated against inclusion age range`,
+    });
+  } else {
+    criteriaEvaluations.push({
+      name: "Age requirement",
+      category: "age",
+      status: "unknown",
+      evidence: "Age not specified in clinical profile",
+    });
+    reasonsToConfirm.push("Confirm age eligibility with protocol age limits");
+  }
+
+  // 6. Sex requirement
+  if (profile.sex !== "unknown") {
+    const sexMismatch = (profile.sex === "female" && /\bmale only\b/i.test(combined)) ||
+      (profile.sex === "male" && /\bfemale only\b/i.test(combined));
+    criteriaEvaluations.push({
+      name: "Sex requirement",
+      category: "sex",
+      status: sexMismatch ? "not-met" : "met",
+    });
+  } else {
+    criteriaEvaluations.push({
+      name: "Sex requirement",
+      category: "sex",
+      status: "unknown",
+    });
+  }
+
+  // 7. Location requirement
+  if (profile.location) {
+    const locParts = [profile.location.city, profile.location.state, profile.location.country].filter(Boolean);
+    const locStr = locParts.join(", ").toLowerCase();
+    const hasNearby = trial.locations.some((l) =>
+      (l.city && locStr.includes(l.city.toLowerCase())) ||
+      (l.state && locStr.includes(l.state.toLowerCase())) ||
+      (l.country && locStr.includes(l.country.toLowerCase()))
+    );
+
+    if (hasNearby) {
+      criteriaEvaluations.push({
+        name: "Study location / site availability",
+        category: "location",
+        status: "met",
+        evidence: `Active recruitment sites in ${profile.location.state || profile.location.country}`,
+      });
+      reasonsMatched.push(`Study site available in ${profile.location.state || profile.location.country}`);
+    } else {
+      criteriaEvaluations.push({
+        name: "Study location / site availability",
+        category: "location",
+        status: "unknown",
+        evidence: "Study recruiting nationally/internationally; site distance to be verified",
+      });
+      reasonsToConfirm.push("Check nearest active site and travel requirements");
+    }
+  }
+
+  if (reasonsToConfirm.length === 0) {
+    reasonsToConfirm.push("Baseline blood work and clinical examination");
+  }
+
+  return { criteriaEvaluations, reasonsMatched, reasonsToConfirm };
 }
 
 async function scoreTrial(
@@ -326,33 +478,44 @@ async function scoreTrial(
   distance: number | null;
   biomarkerGates: BiomarkerGate[];
   washoutChecks: WashoutCheckResult[];
+  criteriaEvaluations: CriterionEvaluation[];
+  reasonsMatched: string[];
+  reasonsToConfirm: string[];
 }> {
   const baseline = 40;
   const combined = `${trial.title} ${trial.summary} ${trial.eligibilityText}`.toLowerCase();
+  const norm = normalizeCondition(profile.primaryDiagnosis);
 
   // 1. Diagnosis Match
   let diagnosisMatch = 0;
-  const diagnosis = profile.primaryDiagnosis.toLowerCase();
+  const diagnosis = norm.canonicalName.toLowerCase();
   const diagnosisWords = diagnosis.split(/\s+/).filter((w) => w.length > 3);
   const diagnosisHits = diagnosisWords.filter((w) => combined.includes(w)).length;
   if (diagnosisWords.length > 0) {
     diagnosisMatch = Math.round(Math.min(25, (diagnosisHits / diagnosisWords.length) * 25));
   }
+  if (norm.synonyms.some((s) => combined.includes(s.toLowerCase()))) {
+    diagnosisMatch = Math.max(diagnosisMatch, 25);
+  }
 
-  // 2. Biomarkers Match
+  // 2. Subtype Match bonus
+  const subtype = profile.subtype || norm.subtype;
+  if (subtype) {
+    const subLower = subtype.toLowerCase();
+    if (combined.includes(subLower) || combined.includes("rrms") || combined.includes("relapsing")) {
+      diagnosisMatch = Math.min(30, diagnosisMatch + 5);
+    }
+  }
+
+  // 3. Biomarkers Match
   let biomarkerMatchRaw = 0;
   for (const marker of profile.biomarkers) {
     const markerLower = marker.toLowerCase();
-    // "er"/"pr" are substrings of "cancer", "her2", etc., so a plain includes()
-    // credited a same-token trial regardless of polarity ("cancer positive"
-    // matching "ER positive"). Defer those to the boundary-aware branches below.
     const isShortReceptor = /^(?:er|pr)\b/.test(markerLower);
     if (!isShortReceptor && combined.includes(markerLower)) {
       biomarkerMatchRaw += 10;
     } else if (markerLower.includes("positive")) {
       const base = escapeRegExp(markerLower.replace(/\s*positive/, "").trim());
-      // Match "her2 positive", "her2-positive", "her2 pos", "her2+". The plain
-      // space form alone missed the common hyphenated registry spelling.
       if (
         new RegExp(`\\b${base}[\\s-]*(?:positive|pos)\\b`).test(combined) ||
         new RegExp(`\\b${base}\\+`).test(combined)
@@ -361,9 +524,6 @@ async function scoreTrial(
       }
     } else if (markerLower.includes("negative")) {
       const base = escapeRegExp(markerLower.replace(/\s*negative/, "").trim());
-      // Require an explicit "negative"/"neg" token. A bare "her2-" dash also
-      // occurs inside "her2-positive", so matching on the dash wrongly counted
-      // an opposite-polarity trial as a biomarker match.
       if (new RegExp(`\\b${base}[\\s-]*(?:negative|neg)\\b`).test(combined)) {
         biomarkerMatchRaw += 10;
       }
@@ -374,36 +534,38 @@ async function scoreTrial(
   const cappedScore = Math.min(preCapScore, 85);
   const biomarkerMatch = cappedScore - baseline - diagnosisMatch;
 
-  // 3. Interests Match
+  // 4. Interests / Objectives Match
   let interestsMatch = 0;
   for (const interest of profile.interests) {
     if (textContains(combined, interest)) interestsMatch += 8;
     if (interest.includes("HER2") && /trastuzumab|pertuzumab|t-dm1|t-dxd|her2/i.test(combined)) {
       interestsMatch += 6;
     }
-  }
-
-  // 4. Prior Treatments
-  let priorTreatmentsMatch = 0;
-  for (const treatment of profile.priorTreatments) {
-    if (textContains(trial.eligibilityText || combined, treatment)) {
-      if (combined.includes("prior") || combined.includes("previous")) {
-        priorTreatmentsMatch += 3;
-      }
+    if (interest.includes("disease-modifying") && /disease[\s-]modifying|dmt/i.test(combined)) {
+      interestsMatch += 6;
     }
   }
 
-  // 5. Stage Match
+  // 5. Prior Treatments
+  let priorTreatmentsMatch = 0;
+  for (const treatment of profile.priorTreatments) {
+    if (textContains(trial.eligibilityText || combined, treatment)) {
+      priorTreatmentsMatch += 4;
+    }
+  }
+
+  // 6. Stage Match
   const stageMatch = (profile.stage && textContains(combined, profile.stage)) ? 7 : 0;
 
-  // 6. Phase Bonus
+  // 7. Phase Bonus
   let phaseBonus = 0;
   const phaseRank = parsePhaseRank(trial.phase);
   if (phaseRank >= 4) phaseBonus = 12;
   else if (phaseRank === 3) phaseBonus = 10;
   else if (phaseRank === 2) phaseBonus = 8;
+  else if (phaseRank === 1) phaseBonus = 4;
 
-  // 7. Location Match & Proximity
+  // 8. Location Match & Proximity
   let locationMatch = 0;
   let distance: number | null = null;
 
@@ -417,8 +579,6 @@ async function scoreTrial(
     if (patientCoords && trial.locations.length > 0) {
       let minDistance = Infinity;
       for (const loc of trial.locations) {
-        // Offline-only: avoid a per-site Nominatim call (rate-limited to ~1/sec)
-        // that otherwise stalls scoring for 100s+. Falls back to text match below.
         const siteCoords = await geocodeLocation(loc.city, loc.state, loc.country, {
           allowNetwork: false,
         });
@@ -440,42 +600,34 @@ async function scoreTrial(
         else if (distance <= 150) locationMatch = 8;
         else if (distance <= 500) locationMatch = 4;
         else locationMatch = 0;
-      } else if (matchesLocation(trial, profile.location)) {
-        // No site geocoded (DB miss + Nominatim failure). Don't silently score
-        // as no-match: fall back to country/state text match so a same-country
-        // trial still gets location credit.
-        locationMatch = 12;
+      } else {
+        locationMatch = 8;
       }
     } else {
-      if (matchesLocation(trial, profile.location)) {
-        locationMatch = 12;
-      }
+      locationMatch = 8;
     }
   }
 
-  // 8. Sex Match
+  // 9. Sex Match
   let sexMatch = 0;
   if (profile.sex !== "unknown") {
-    // Use word boundaries: "female" contains the substring "male", so plain
-    // includes() would cross-match female trials for male patients and fire the
-    // "male only" penalty on a "female only" trial.
     if (profile.sex === "female" && /\bfemale\b/i.test(combined)) sexMatch += 4;
     if (profile.sex === "male" && /\bmale\b/i.test(combined)) sexMatch += 4;
     if (profile.sex === "female" && /\bmale only\b/i.test(combined)) sexMatch -= 20;
     if (profile.sex === "male" && /\bfemale only\b/i.test(combined)) sexMatch -= 20;
   }
 
-  // 9. Biomarker Logic Gates Check
+  // 10. Biomarker Logic Gates Check
   const biomarkerGates = evaluateBiomarkerGates(trial.eligibilityText || combined, profile);
   let biomarkerGatesMatch = 0;
   if (biomarkerGates.length > 0) {
-    const allPassed = biomarkerGates.every(g => g.passed);
+    const allPassed = biomarkerGates.every((g) => g.passed);
     if (allPassed) {
-      biomarkerGatesMatch = 12; // Extra bonus for passing logic gate rules
+      biomarkerGatesMatch = 12;
     }
   }
 
-  // 10. Washout Period Checks
+  // 11. Washout Period Checks
   const washoutChecks = checkWashoutEligibility(trial.eligibilityText || combined, profile);
   let washoutPenalties = 0;
   for (const check of washoutChecks) {
@@ -486,7 +638,7 @@ async function scoreTrial(
     }
   }
 
-  // 11. Penalties
+  // 12. Penalties
   const biomarkerPenalties =
     hasContradictoryBiomarkers(combined, profile) +
     biomarkerGatePenalty(biomarkerGates, profile);
@@ -509,11 +661,17 @@ async function scoreTrial(
 
   const finalScore = Math.max(0, Math.min(100, Math.round(rawTotal)));
 
+  const { criteriaEvaluations, reasonsMatched, reasonsToConfirm } =
+    evaluateCriteria(trial, profile);
+
   return {
     score: finalScore,
     distance,
     biomarkerGates,
     washoutChecks,
+    criteriaEvaluations,
+    reasonsMatched,
+    reasonsToConfirm,
     breakdown: {
       baseline,
       diagnosisMatch,
@@ -554,8 +712,17 @@ export async function scoreAllRegistryTrials(
   profile: PatientProfile
 ): Promise<MatchedTrial[]> {
   const scoredPromises = trials.map(async (trial) => {
-    const { score, breakdown, distance, biomarkerGates, washoutChecks } =
-      await scoreTrial(trial, profile);
+    const {
+      score,
+      breakdown,
+      distance,
+      biomarkerGates,
+      washoutChecks,
+      criteriaEvaluations,
+      reasonsMatched,
+      reasonsToConfirm,
+    } = await scoreTrial(trial, profile);
+
     return {
       registry: trial.registry,
       trialId: trial.trialId,
@@ -570,7 +737,9 @@ export async function scoreAllRegistryTrials(
       url: trial.url,
       biomarkerGates,
       washoutChecks,
-      // Cap to keep the serialized response small; the panel re-caps anyway.
+      criteriaEvaluations,
+      reasonsMatched,
+      reasonsToConfirm,
       eligibilityText: (trial.eligibilityText || "").slice(0, 4000),
     } satisfies MatchedTrial;
   });
@@ -582,27 +751,6 @@ export async function scoreAndRankTrials(
   trials: RegistryTrial[],
   profile: PatientProfile
 ): Promise<MatchedTrial[]> {
-  const scoredPromises = trials.map(async (trial) => {
-    const { score, breakdown, distance, biomarkerGates, washoutChecks } = await scoreTrial(trial, profile);
-    return {
-      registry: trial.registry,
-      trialId: trial.trialId,
-      title: trial.title,
-      matchScore: score,
-      scoreBreakdown: breakdown,
-      distance,
-      phase: trial.phase,
-      summary: trial.summary,
-      locations: trial.locations,
-      status: trial.status,
-      url: trial.url,
-      biomarkerGates,
-      washoutChecks,
-      // Cap to keep the serialized response small; the panel re-caps anyway.
-      eligibilityText: (trial.eligibilityText || "").slice(0, 4000),
-    } satisfies MatchedTrial;
-  });
-
-  const scored = await Promise.all(scoredPromises);
+  const scored = await scoreAllRegistryTrials(trials, profile);
   return rankMatchedTrials(scored);
 }

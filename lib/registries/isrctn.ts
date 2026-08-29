@@ -42,11 +42,11 @@ export function parseLegacyXml(xml: string): RegistryTrial[] {
     const summary = capTrialSummary(normalizeTrialSummary(rawSummary));
 
     const countriesMatches = [...block.matchAll(/<country>([^<]+)/g)];
-    const locations = countriesMatches.map(m => ({
+    const locations = countriesMatches.map((m) => ({
       facility: "Recruitment Site",
       city: "",
       state: "",
-      country: m[1].trim()
+      country: m[1].trim(),
     }));
 
     if (!id || !title) continue;
@@ -74,8 +74,8 @@ function sanitizeQueryParam(val: string): string {
 async function queryLegacyApi(
   params: RegistrySearchParams
 ): Promise<RegistryTrial[]> {
-  const cleanCondition = sanitizeQueryParam(params.condition);
-  const url = `${LEGACY_XML}?q=${encodeURIComponent(cleanCondition || "cancer")}&limit=15`;
+  const cleanCondition = sanitizeQueryParam(params.condition) || "clinical trial";
+  const url = `${LEGACY_XML}?q=${encodeURIComponent(cleanCondition)}&limit=15`;
   const response = await fetch(url, {
     headers: { Accept: "application/xml,text/xml" },
     next: { revalidate: 0 },
@@ -92,9 +92,9 @@ async function queryLegacyApi(
 async function verifyIsrctnReachable(
   params: RegistrySearchParams
 ): Promise<boolean> {
-  const cleanCondition = sanitizeQueryParam(params.condition);
+  const cleanCondition = sanitizeQueryParam(params.condition) || "clinical trial";
   const response = await fetch(
-    `${TRACKER_URL}?q=${encodeURIComponent(cleanCondition || "cancer")}`,
+    `${TRACKER_URL}?q=${encodeURIComponent(cleanCondition)}`,
     {
       headers: { Accept: "application/json" },
       next: { revalidate: 0 },

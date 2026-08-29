@@ -9,7 +9,6 @@ const figtree = Figtree({
   display: "swap",
 });
 
-// Display face: warm, optical-size serif. Distinct from the Figtree body.
 const fraunces = Fraunces({
   subsets: ["latin"],
   weight: ["400", "600"],
@@ -75,9 +74,7 @@ export default function RootLayout({
           <div className="page-wrap">
             <div className="border-t border-border-subtle" />
             <p className="py-6 section-hint text-sm leading-relaxed">
-              For informational purposes only. This tool does not provide medical advice,
-              diagnosis, or treatment recommendations, and cannot enroll patients in studies.
-              Confirm eligibility with your oncology care team before pursuing any trial.
+              For informational purposes only. This tool does not provide medical advice, diagnosis, or treatment recommendations and cannot enroll patients in studies. Eligibility estimates are based on publicly available trial criteria and the information provided. Confirm eligibility directly with the study team or an appropriate healthcare professional.
             </p>
           </div>
         </footer>
