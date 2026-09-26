@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
-const MODEL = "meta/llama-3.3-70b-instruct";
+const MODEL = "moonshotai/kimi-k3";
 
 export function isNvidiaConfigured(): boolean {
   return Boolean(process.env.NVIDIA_API_KEY?.trim());
@@ -26,8 +26,8 @@ export async function nvidiaChatCompletion(options: {
   const completion = await client.chat.completions.create({
     model: MODEL,
     messages: options.messages,
-    temperature: 0.2,
-    top_p: 0.7,
+    temperature: 1,
+    top_p: 0.95,
     max_tokens: 1024,
     stream: false,
   });
