@@ -3,6 +3,12 @@ import OpenAI from "openai";
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
 const MODEL = "moonshotai/kimi-k3";
 
+function usableReply(text: string | null | undefined): string {
+  const trimmed = text?.trim() ?? "";
+  if (!trimmed || /^!+$/.test(trimmed)) return "";
+  return trimmed;
+}
+
 export function isNvidiaConfigured(): boolean {
   return Boolean(process.env.NVIDIA_API_KEY?.trim());
 }
@@ -30,9 +36,13 @@ export async function nvidiaChatCompletion(options: {
     top_p: 0.95,
     max_tokens: 1024,
     stream: false,
-  });
+    reasoning_effort: "low",
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
-  const content = completion.choices[0]?.message?.content?.trim();
+  const message = completion.choices[0]?.message as
+    | { content?: string | null; reasoning_content?: string | null }
+    | undefined;
+  const content = usableReply(message?.content) || usableReply(message?.reasoning_content);
   if (!content) {
     throw new Error("NVIDIA API returned an empty response");
   }
