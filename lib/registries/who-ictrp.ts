@@ -60,7 +60,6 @@ async function postWhoSearch(
       Accept: "text/html,application/xhtml+xml",
       Cookie: cookieHeader,
       Referer: `${WHO_PORTAL_BASE}/Default.aspx`,
-      Origin: WHO_PORTAL_BASE,
     },
     body: body.toString(),
     next: { revalidate: 0 },

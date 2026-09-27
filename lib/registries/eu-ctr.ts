@@ -104,6 +104,50 @@ function buildLegacySearchUrl(params: RegistrySearchParams): string {
   return `${LEGACY_SEARCH}?${search.toString()}`;
 }
 
+export const CTIS_OPEN_STATUS: Record<number, string> = {
+  2: "Not yet recruiting",
+  3: "Recruiting",
+  4: "Recruiting",
+};
+
+export interface CtisSearchHit {
+  ctNumber?: string;
+  ctTitle?: string;
+  trialPhase?: string;
+  ctStatus?: number | string;
+  trialCountries?: string[];
+  conditions?: string;
+}
+
+export function mapCtisSearchHit(trial: CtisSearchHit): RegistryTrial | null {
+  const code = Number(trial.ctStatus);
+  const status = CTIS_OPEN_STATUS[code];
+  if (!status || !trial.ctNumber) return null;
+
+  const countries = [...new Set(
+    (trial.trialCountries ?? [])
+      .map((entry) => entry.replace(/:\d+$/, "").trim())
+      .filter(Boolean)
+  )];
+
+  return {
+    registry: "EU-CTR",
+    trialId: trial.ctNumber,
+    title: trial.ctTitle?.trim() || "Untitled EU trial",
+    phase: trial.trialPhase?.trim() || "Not specified",
+    summary: capTrialSummary(trial.conditions?.trim() || "EU CTIS registered trial."),
+    status,
+    locations: countries.map((country) => ({
+      facility: "CTIS site",
+      city: "",
+      state: "",
+      country,
+    })),
+    eligibilityText: "",
+    url: `https://euclinicaltrials.eu/ctis-public/view/${trial.ctNumber}`,
+  };
+}
+
 async function queryCtisApi(
   params: RegistrySearchParams
 ): Promise<RegistryTrial[]> {
@@ -117,8 +161,11 @@ async function queryCtisApi(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        searchCriteria: { medicalCondition: searchQuery },
-        pagination: { page: 0, pageSize: 15 },
+        searchCriteria: {
+          containAll: searchQuery,
+          status: [2, 3, 4],
+        },
+        pagination: { page: 1, pageSize: 10 },
       }),
       next: { revalidate: 0 },
     }
@@ -126,40 +173,10 @@ async function queryCtisApi(
 
   if (!response.ok) return [];
 
-  const data = (await response.json()) as {
-    data?: Array<{
-      ctNumber?: string;
-      ctTitle?: string;
-      trialPhase?: string;
-      ctStatus?: string;
-      trialCountries?: string[];
-    }>;
-  };
-
-  if (!data.data?.length) return [];
-
-  return data.data
-    .filter((trial) =>
-      /recruit|not yet|ongoing|authoris/i.test(trial.ctStatus ?? "")
-    )
-    .map((trial) => ({
-      registry: "EU-CTR" as const,
-      trialId: trial.ctNumber ?? "unknown",
-      title: trial.ctTitle ?? "Untitled EU trial",
-      phase: trial.trialPhase ?? "Not specified",
-      summary: "EU CTIS registered trial.",
-      status: trial.ctStatus ?? "Unknown",
-      locations: (trial.trialCountries ?? []).map((country) => ({
-        facility: "CTIS site",
-        city: "",
-        state: "",
-        country,
-      })),
-      eligibilityText: "",
-      url: trial.ctNumber
-        ? `https://euclinicaltrials.eu/ctis-public/view/${trial.ctNumber}`
-        : "https://euclinicaltrials.eu/ctis-public/",
-    }));
+  const data = (await response.json()) as { data?: CtisSearchHit[] };
+  return (data.data ?? [])
+    .map(mapCtisSearchHit)
+    .filter((trial): trial is RegistryTrial => trial !== null);
 }
 
 function dedupeEuTrials(trials: RegistryTrial[]): RegistryTrial[] {

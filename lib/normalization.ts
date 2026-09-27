@@ -178,6 +178,54 @@ const KNOWN_CONDITIONS: KnownConditionRule[] = [
  * Normalizes any free-text or extracted diagnosis into a clean medical entity
  * with canonical name, identified subtype, and registry-ready synonyms.
  */
+export function conditionSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export interface ListedCondition {
+  slug: string;
+  canonicalName: string;
+  synonyms: string[];
+}
+
+export function listKnownConditions(): ListedCondition[] {
+  return KNOWN_CONDITIONS.map((rule) => ({
+    slug: conditionSlug(rule.canonicalName),
+    canonicalName: rule.canonicalName,
+    synonyms: [...rule.synonyms],
+  })).sort((a, b) => a.canonicalName.localeCompare(b.canonicalName));
+}
+
+export function findKnownCondition(slug: string): ListedCondition | undefined {
+  return listKnownConditions().find((condition) => condition.slug === slug);
+}
+
+/** Condition names sent to ClinicalTrials.gov. Short abbreviations stay on the page, out of the query. */
+export function registryConditionQuery(condition: ListedCondition): string {
+  const seen = new Set<string>();
+  const kept: string[] = [];
+
+  for (const term of [condition.canonicalName, ...condition.synonyms]) {
+    const clean = term
+      .replace(/[^a-zA-Z0-9\s\-/]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!clean) continue;
+    if (clean.length < 5) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push(clean);
+    if (kept.length >= 6) break;
+  }
+
+  return kept.join(" OR ") || condition.canonicalName;
+}
+
 export function normalizeCondition(rawInput: string): NormalizedCondition {
   const text = String(rawInput ?? "").trim();
   if (!text) {

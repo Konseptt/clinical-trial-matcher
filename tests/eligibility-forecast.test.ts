@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   forecastTrialEligibility,
+  matchesReadinessFilter,
   summarizeForecasts,
 } from "@/lib/eligibility-forecast";
 import type {
@@ -156,5 +157,22 @@ describe("summarizeForecasts", () => {
     expect(totals.upcoming).toBe(2);
     expect(totals.likelyIneligible).toBe(1);
     expect(totals.nextDate).toBe("2026-08-30");
+  });
+});
+
+describe("matchesReadinessFilter", () => {
+  it("maps the likely-eligible chip onto ready trials", () => {
+    expect(matchesReadinessFilter("ready", "likely-eligible-now")).toBe(true);
+    expect(matchesReadinessFilter("opens-later", "likely-eligible-now")).toBe(false);
+  });
+
+  it("maps the not-a-match chip onto likely-ineligible trials", () => {
+    expect(matchesReadinessFilter("likely-ineligible", "not-a-match")).toBe(true);
+    expect(matchesReadinessFilter("ready", "not-a-match")).toBe(false);
+  });
+
+  it("keeps every trial when the filter is all", () => {
+    expect(matchesReadinessFilter("upcoming", "all")).toBe(true);
+    expect(matchesReadinessFilter(undefined, "all")).toBe(true);
   });
 });

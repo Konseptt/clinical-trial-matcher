@@ -218,6 +218,22 @@ export interface ForecastTotals {
   nextDate: string | null;
 }
 
+/** Filter chips use labels that do not match every stored status. */
+export function matchesReadinessFilter(
+  status: ReadinessStatus | undefined,
+  filter: "all" | ReadinessStatus
+): boolean {
+  if (filter === "all") return true;
+  if (!status) return false;
+  if (filter === "likely-eligible-now" || filter === "ready") {
+    return status === "ready" || status === "likely-eligible-now";
+  }
+  if (filter === "not-a-match" || filter === "likely-ineligible") {
+    return status === "not-a-match" || status === "likely-ineligible";
+  }
+  return status === filter;
+}
+
 export function summarizeForecasts(
   forecasts: EligibilityForecast[]
 ): ForecastTotals {

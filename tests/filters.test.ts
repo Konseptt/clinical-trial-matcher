@@ -73,6 +73,10 @@ describe("isOpenRecruitmentStatus", () => {
     expect(isOpenRecruitmentStatus("Enrolling by invitation")).toBe(true);
     expect(isOpenRecruitmentStatus("Authorised")).toBe(true);
   });
+  it("rejects a plain not-recruiting status", () => {
+    expect(isOpenRecruitmentStatus("Not Recruiting")).toBe(false);
+    expect(isOpenRecruitmentStatus("Not yet recruiting")).toBe(true);
+  });
   it("rejects closed variants", () => {
     expect(isOpenRecruitmentStatus("Completed")).toBe(false);
     expect(isOpenRecruitmentStatus("Terminated")).toBe(false);
@@ -112,6 +116,14 @@ describe("applyTrialFilters", () => {
     ];
     const out = applyTrialFilters(trials, { location: null, prioritizePhaseTwoPlus: true });
     expect(out.map((t) => t.trialId)).toEqual(["a"]);
+  });
+  it("keeps unspecified-phase trials when later phases exist", () => {
+    const trials = [
+      trial({ trialId: "a", status: "Recruiting", phase: "Phase 3" }),
+      trial({ trialId: "eu", status: "Recruiting", phase: "Not specified" }),
+    ];
+    const out = applyTrialFilters(trials, { location: null, prioritizePhaseTwoPlus: true });
+    expect(out.map((t) => t.trialId).sort()).toEqual(["a", "eu"]);
   });
   it("keeps phase I trials when no phase II+ available", () => {
     const trials = [trial({ trialId: "c", status: "Recruiting", phase: "Phase 1" })];

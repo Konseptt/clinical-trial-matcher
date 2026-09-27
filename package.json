@@ -7,7 +7,7 @@
     "type": "git",
     "url": "https://github.com/Konseptt/clinical-trial-matcher.git"
   },
-  "homepage": "https://clinical-trial-matcher-beta.vercel.app",
+  "homepage": "https://clinicaltrial.ranjansharma.info.np",
   "license": "MIT",
   "scripts": {
     "dev": "next dev",

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Figtree, Fira_Code, Fraunces } from "next/font/google";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const figtree = Figtree({
@@ -24,28 +26,40 @@ const firaCode = Fira_Code({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Clinical Trial Matcher",
-    template: "%s, Clinical Trial Matcher",
+    template: "%s | Clinical Trial Matcher",
   },
   description:
-    "Search international clinical trial registries using patient clinical information to identify potentially eligible studies.",
+    "Search ClinicalTrials.gov, EU, WHO, and ISRCTN records and forecast when a washout line in the registry text might clear. Estimates only. The study team confirms eligibility.",
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
+  openGraph: {
+    title: "Clinical Trial Matcher",
+    description:
+      "Recruiting studies from public registries, with a washout forecast from the criteria text. Estimates only.",
+    url: SITE_URL,
+    siteName: "Clinical Trial Matcher",
+    type: "website",
   },
 };
 
 function Masthead() {
   return (
-    <header className="mb-10 w-full max-w-2xl">
-      <h1 className="font-display text-3xl sm:text-4xl font-semibold text-foreground text-pretty leading-tight">
+    <header className="mb-8 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+      <Link href="/" className="font-display text-lg font-semibold text-foreground">
         Clinical Trial Matcher
-      </h1>
-      <p className="section-hint mt-2">
-        Enter diagnosis, treatment history, and location. The system searches
-        public registries, ranks open studies by estimated eligibility fit, and
-        forecasts when you could become eligible.
-      </p>
+      </Link>
+      <nav aria-label="Site" className="flex gap-6">
+        <Link href="/how-matching-works" className="font-body text-sm text-faint hover:text-foreground">
+          How matching works
+        </Link>
+        <Link href="/conditions" className="font-body text-sm text-faint hover:text-foreground">
+          Conditions
+        </Link>
+      </nav>
     </header>
   );
 }
@@ -73,7 +87,15 @@ export default function RootLayout({
         <footer>
           <div className="page-wrap">
             <div className="border-t border-border-subtle" />
-            <p className="py-6 section-hint text-sm leading-relaxed">
+            <p className="pt-6 pb-2 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <Link href="/how-matching-works" className="text-primary underline underline-offset-2">
+                How matching works
+              </Link>
+              <Link href="/conditions" className="text-primary underline underline-offset-2">
+                Conditions
+              </Link>
+            </p>
+            <p className="pb-6 section-hint text-sm leading-relaxed">
               For informational purposes only. This tool does not provide medical advice, diagnosis, or treatment recommendations and cannot enroll patients in studies. Eligibility estimates are based on publicly available trial criteria and the information provided. Confirm eligibility directly with the study team or an appropriate healthcare professional.
             </p>
           </div>

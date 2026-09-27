@@ -692,6 +692,28 @@ async function scoreTrial(
 
 const MIN_DISPLAY_SCORE = 45;
 const MAX_RESULTS = 10;
+const PER_REGISTRY = 2;
+
+export function selectDisplayedTrials(ranked: MatchedTrial[]): MatchedTrial[] {
+  const keyOf = (trial: MatchedTrial) =>
+    `${trial.registry}:${trial.trialId}`.toLowerCase();
+  const high = ranked.filter((trial) => trial.matchScore >= MIN_DISPLAY_SCORE);
+  const picked = new Set<string>();
+
+  for (const trial of (high.length > 0 ? high : ranked).slice(0, MAX_RESULTS)) {
+    picked.add(keyOf(trial));
+  }
+
+  const registries = [...new Set(ranked.map((trial) => trial.registry))];
+  for (const registry of registries) {
+    const fromRegistry = ranked.filter((trial) => trial.registry === registry);
+    for (const trial of fromRegistry.slice(0, PER_REGISTRY)) {
+      picked.add(keyOf(trial));
+    }
+  }
+
+  return ranked.filter((trial) => picked.has(keyOf(trial)));
+}
 
 export function rankMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
   const ranked = [...trials].sort((a, b) => {
@@ -702,9 +724,7 @@ export function rankMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
     return b.matchScore - a.matchScore;
   });
 
-  const relevant = ranked.filter((trial) => trial.matchScore >= MIN_DISPLAY_SCORE);
-  if (relevant.length > 0) return relevant.slice(0, MAX_RESULTS);
-  return ranked.slice(0, 5);
+  return selectDisplayedTrials(ranked);
 }
 
 export async function scoreAllRegistryTrials(

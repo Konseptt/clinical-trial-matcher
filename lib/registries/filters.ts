@@ -34,6 +34,8 @@ export function isOpenRecruitmentStatus(status: string): boolean {
   const normalized = normalizeStatus(status);
   if (EXCLUDED_STATUSES.has(normalized)) return false;
   if (RECRUITING_STATUSES.has(normalized)) return true;
+  // "Not recruiting" contains the word recruit, but it is a closed status.
+  if (normalized === "NOT RECRUITING") return false;
 
   return (
     normalized.includes("RECRUIT") ||
@@ -116,11 +118,14 @@ export function applyTrialFilters(
   );
 
   if (options.prioritizePhaseTwoPlus) {
-    const phaseFiltered = filtered.filter((trial) =>
-      isPhaseTwoOrAbove(trial.phase)
-    );
-    if (phaseFiltered.length > 0) {
-      filtered = phaseFiltered;
+    const hasLaterPhase = filtered.some((trial) => isPhaseTwoOrAbove(trial.phase));
+    if (hasLaterPhase) {
+      // Drop explicit phase I when a later phase is present. Keep an
+      // unspecified phase so EU, WHO, and ISRCTN records still appear.
+      filtered = filtered.filter(
+        (trial) =>
+          isPhaseTwoOrAbove(trial.phase) || parsePhaseRank(trial.phase) === 0
+      );
     }
   }
 

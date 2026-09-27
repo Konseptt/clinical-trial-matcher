@@ -23,6 +23,7 @@ import { parsePhaseRank } from "@/lib/registries/filters";
 import {
   forecastTrialEligibility,
   formatForecastDate,
+  matchesReadinessFilter,
   summarizeForecasts,
   type EligibilityForecast,
   type ReadinessStatus,
@@ -1181,10 +1182,9 @@ export default function ResultsDashboard({
   };
 
   const visibleTrials = useMemo(() => {
-    const filtered =
-      readinessFilter === "all"
-        ? trials
-        : trials.filter((t) => forecasts.get(t.trialId)?.status === readinessFilter);
+    const filtered = trials.filter((trial) =>
+      matchesReadinessFilter(forecasts.get(trial.trialId)?.status, readinessFilter)
+    );
 
     if (sortBy === "match") return filtered;
 
