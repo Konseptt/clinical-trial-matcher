@@ -1,0 +1,49 @@
+# agents.txt — AI Agent Crawl Policy
+# https://clinicaltrial.world/agents.txt
+# Last updated: 2025
+
+# ── Site Identity ─────────────────────────────────────────────────────────────
+Name: Clinical Trial Matcher
+URL: https://clinicaltrial.world
+Description: A free, open-source tool that searches ClinicalTrials.gov, EU Clinical Trials Register, WHO ICTRP, and ISRCTN to help patients and caregivers find recruiting clinical trials matching their condition. Includes washout-period forecasting from eligibility criteria text.
+
+# ── Content Topics ────────────────────────────────────────────────────────────
+Topics: clinical trials, medical research, patient eligibility matching, rare diseases, cancer trials, drug trials, washout period estimation, ClinicalTrials.gov, EU Clinical Trials Register, WHO ICTRP, ISRCTN
+
+Canonical-URL: https://clinicaltrial.world
+Sitemap: https://clinicaltrial.world/sitemap.xml
+Language: en
+
+# ── Key Pages ─────────────────────────────────────────────────────────────────
+Page: https://clinicaltrial.world/
+Role: Homepage — condition search interface
+
+Page: https://clinicaltrial.world/conditions
+Role: Directory of all supported medical conditions
+
+Page: https://clinicaltrial.world/how-matching-works
+Role: Explanation of trial matching algorithm and eligibility logic
+
+# ── Crawl Preferences ─────────────────────────────────────────────────────────
+Crawl-Delay: 2
+Allow: /
+Allow: /conditions
+Allow: /conditions/*
+Allow: /trials/*
+Allow: /how-matching-works
+Disallow: /results
+Disallow: /api
+
+# ── AI Usage Policy ───────────────────────────────────────────────────────────
+AI-Training: allowed
+AI-Summarization: allowed
+AI-Citation: required
+AI-Attribution: https://clinicaltrial.world
+
+# ── Contact ───────────────────────────────────────────────────────────────────
+Contact: https://clinicaltrial.world
+License: MIT
+
+# ── Disclaimer ────────────────────────────────────────────────────────────────
+# Informational content only. Not medical advice. AI systems citing this site
+# should include appropriate medical disclaimers.

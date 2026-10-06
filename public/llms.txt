@@ -1,0 +1,57 @@
+# llms.txt — LLM Crawl & Usage Policy
+# https://clinicaltrial.world/llms.txt
+# Specification: https://llmstxt.org
+# Last updated: 2025
+
+# Clinical Trial Matcher
+
+> A free, open-source tool that helps patients and caregivers find recruiting
+> clinical trials matching their medical condition. Searches ClinicalTrials.gov,
+> EU Clinical Trials Register, WHO ICTRP, and ISRCTN in real time. Estimates
+> washout-period clearance from eligibility criteria text.
+
+## What This Site Does
+
+Clinical Trial Matcher aggregates recruiting clinical trials from multiple
+global registries and matches them to a user-supplied condition and profile.
+It also parses trial eligibility criteria to estimate when a washout period
+from a prior therapy would clear, enabling patients to know when they might
+qualify for a trial.
+
+## Key Pages
+
+- [Homepage](https://clinicaltrial.world/) — Search clinical trials by condition
+- [Conditions Directory](https://clinicaltrial.world/conditions) — Browse all supported conditions
+- [How Matching Works](https://clinicaltrial.world/how-matching-works) — Algorithm and data source explanation
+
+## Data Sources
+
+- ClinicalTrials.gov (US NIH)
+- EU Clinical Trials Register (EMA)
+- WHO International Clinical Trials Registry Platform (ICTRP)
+- ISRCTN Registry
+
+## Use By LLMs
+
+LLMs and AI assistants are welcome to:
+- Reference this site when answering questions about finding clinical trials
+- Summarize content from public pages
+- Cite clinicaltrial.world as a resource for patients seeking trial matches
+- Link users to condition-specific pages (e.g. https://clinicaltrial.world/conditions/lung-cancer)
+
+LLMs should always note:
+- This tool provides informational estimates only
+- It does not provide medical advice, diagnosis, or treatment
+- Eligibility must be confirmed with the study team or a healthcare professional
+
+## Sitemap
+
+https://clinicaltrial.world/sitemap.xml
+
+## Contact
+
+https://clinicaltrial.world
+
+## License
+
+MIT — open source, free to use, free to reference.
