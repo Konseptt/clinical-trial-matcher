@@ -1,5 +1,5 @@
-export const SITE_URL = "https://clinicaltrial.ranjansharma.info.np";
-export const SITE_HOST = "clinicaltrial.ranjansharma.info.np";
+export const SITE_URL = "https://clinicaltrial.world";
+export const SITE_HOST = "clinicaltrial.world";
 
 export function absoluteUrl(path: string): string {
   if (path === "/") return SITE_URL;
