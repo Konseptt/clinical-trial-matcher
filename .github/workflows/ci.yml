@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://localhost/clinical_trial_matcher
     steps:
       - uses: actions/checkout@v4
 
