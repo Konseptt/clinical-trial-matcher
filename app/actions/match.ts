@@ -43,15 +43,13 @@ export async function getResultsAction(
   mode: AppMode = "doctor"
 ): Promise<MatchActionResult> {
   const trimmedNotes = String(notes ?? "").trim();
-  const minLength = mode === "patient" ? 15 : 20;
-
-  if (!trimmedNotes || trimmedNotes.length < minLength) {
+  if (!trimmedNotes) {
     return {
       success: false,
       error:
         mode === "patient"
-          ? "Please add a few words about your diagnosis, treatment, or trial goals."
-          : "Please provide clinical notes of at least 20 characters.",
+          ? "Please enter a clinical summary before searching."
+          : "Please enter clinical notes before searching.",
     };
   }
 

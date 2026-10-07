@@ -60,13 +60,11 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
     setError(null);
 
     const trimmed = notes.trim();
-    const minLength = mode === "patient" ? 15 : 20;
-
-    if (!trimmed || trimmed.length < minLength) {
+    if (!trimmed) {
       setError(
         mode === "patient"
-          ? "Please add a few words about your diagnosis, treatment, or trial goals."
-          : "Please provide clinical notes of at least 20 characters."
+          ? "Please enter a clinical summary before searching."
+          : "Please enter clinical notes before searching."
       );
       return;
     }
@@ -99,7 +97,7 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
         </h2>
         <p className="section-hint mb-6">
           {isPatient
-            ? "Write a few words or a short summary about your diagnosis, prior treatments, location, and what you are looking for."
+              ? "Share any details you have about your diagnosis, prior treatments, location, and what you are looking for."
             : "Include age, sex, diagnosis, stage, biomarkers, prior therapies, and location where available."}
         </p>
         <label htmlFor="clinical-notes" className="sr-only">
@@ -114,12 +112,11 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
             onChange={(e) => setNotes(e.target.value)}
             placeholder={
               isPatient
-                ? "Write a few words or a short summary. Example: I'm 58, live near Boston, and have stage III HER2-positive breast cancer. I had surgery, chemo, and trastuzumab, and I'm looking for newer treatment trials."
+                ? "Share any details you have. Example: I'm 58, live near Boston, and have stage III HER2-positive breast cancer. I had surgery, chemo, and trastuzumab, and I'm looking for newer treatment trials."
                 : "Example: 58-year-old woman with stage III HER2-positive breast cancer. Lives in Boston, MA. Prior mastectomy, chemo, and trastuzumab. Looking for trials near home."
             }
             rows={12}
             required
-            minLength={isPatient ? 15 : 20}
             maxLength={10000}
             spellCheck={true}
             autoComplete="off"
@@ -135,7 +132,7 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
         <div className="compose-footer">
           <p id="notes-hint">
             {isPatient
-              ? "A few words or a short summary is enough to get started"
+              ? "Share as much or as little detail as you have"
               : "Minimum 20 characters required"}
           </p>
           <span aria-hidden="true">{notes.length.toLocaleString()} / 10,000</span>
