@@ -53,12 +53,15 @@ function Masthead() {
       <Link href="/" className="font-display text-lg font-semibold text-foreground">
         Clinical Trial Matcher
       </Link>
-      <nav aria-label="Site" className="flex gap-6">
+      <nav aria-label="Site" className="flex flex-wrap gap-6 items-center">
         <Link href="/how-matching-works" className="font-body text-sm text-faint hover:text-foreground">
           How matching works
         </Link>
         <Link href="/conditions" className="font-body text-sm text-faint hover:text-foreground">
           Conditions
+        </Link>
+        <Link href="/sign-in" className="font-body text-sm text-primary hover:text-foreground">
+          Sign in
         </Link>
       </nav>
     </header>

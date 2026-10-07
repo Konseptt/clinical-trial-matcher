@@ -1,5 +1,7 @@
 "use server";
 
+import { auth } from "@/auth";
+import { consumeAiQuota } from "@/lib/ai-quota";
 import { runMatchPipeline, runMatchPipelineByProfile } from "@/lib/match";
 import { applyTrialFilters } from "@/lib/registries/filters";
 import type { RegistryTrial } from "@/lib/registries/types";
@@ -16,6 +18,7 @@ import type {
   PatientProfile,
   SimplifiedTrialGuide,
 } from "@/lib/types";
+import { boundedText, validatePatientProfile } from "@/lib/security";
 
 function dedupeMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
   const byKey = new Map<string, MatchedTrial>();
@@ -77,8 +80,13 @@ export async function getResultsAction(
 export async function getResultsByProfileAction(
   profile: PatientProfile
 ): Promise<MatchActionResult> {
+  const safeProfile = validatePatientProfile(profile);
+  if (!safeProfile) {
+    return { success: false, error: "The clinical profile is invalid or too large." };
+  }
+
   try {
-    const data = await runMatchPipelineByProfile(profile);
+    const data = await runMatchPipelineByProfile(safeProfile);
     return { success: true, data };
   } catch (error) {
     console.error("Clinical trial match by profile failure:", error);
@@ -137,28 +145,39 @@ export async function getSimplifiedSummaryAction(input: {
   matchScore: number;
   profile: PatientProfile;
 }): Promise<{ guide: SimplifiedTrialGuide } | { error: string }> {
-  const trialTitle = String(input.trialTitle ?? "").trim().slice(0, 500);
-  const trialSummary = String(input.trialSummary ?? "").trim().slice(0, 4000);
+  const session = await auth();
+  if (!session?.user) {
+    return { error: "Please sign in with Google to generate a patient summary." };
+  }
 
-  if (!trialTitle || !trialSummary) {
+  const rawInput = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const trialTitle = boundedText(rawInput.trialTitle, 500);
+  const trialSummary = boundedText(rawInput.trialSummary, 4000);
+  const profile = validatePatientProfile(rawInput.profile);
+
+  if (!trialTitle || !trialSummary || !profile) {
     return { error: "Required trial information is unavailable." };
+  }
+
+  if (!(await consumeAiQuota(session.user.id))) {
+    return { error: "Daily AI usage limit reached. Please try again tomorrow." };
   }
 
   try {
     const guide = await generateSimplifiedTrialGuide({
       trialTitle,
       trialSummary,
-      trialPhase: String(input.trialPhase ?? "Not specified").slice(0, 80),
-      trialStatus: String(input.trialStatus ?? "Unknown").slice(0, 80),
-      matchScore: Math.min(100, Math.max(0, Number(input.matchScore) || 0)),
+      trialPhase: boundedText(rawInput.trialPhase, 80) ?? "Not specified",
+      trialStatus: boundedText(rawInput.trialStatus, 80) ?? "Unknown",
+      matchScore: Math.min(100, Math.max(0, Number(rawInput.matchScore) || 0)),
       profile: {
-        primaryDiagnosis: input.profile.primaryDiagnosis,
-        stage: input.profile.stage,
-        age: input.profile.age,
-        sex: input.profile.sex,
-        biomarkers: input.profile.biomarkers.slice(0, 10),
-        priorTreatments: input.profile.priorTreatments.slice(0, 8),
-        location: input.profile.location,
+        primaryDiagnosis: profile.primaryDiagnosis,
+        stage: profile.stage,
+        age: profile.age,
+        sex: profile.sex,
+        biomarkers: profile.biomarkers.slice(0, 10),
+        priorTreatments: profile.priorTreatments.slice(0, 8),
+        location: profile.location,
       },
     });
 
@@ -177,12 +196,23 @@ export async function runEligibilityPanelAction(input: {
   trialStatus: string;
   profile: PatientProfile;
 }): Promise<{ result: EligibilityPanelResult } | { error: string }> {
-  const trialTitle = String(input.trialTitle ?? "").trim().slice(0, 500);
-  const trialSummary = String(input.trialSummary ?? "").trim().slice(0, 4000);
-  const trialEligibility = String(input.trialEligibility ?? "").trim().slice(0, 6000);
+  const session = await auth();
+  if (!session?.user) {
+    return { error: "Please sign in with Google to run the eligibility review panel." };
+  }
 
-  if (!trialTitle) {
+  const rawInput = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const trialTitle = boundedText(rawInput.trialTitle, 500);
+  const trialSummary = boundedText(rawInput.trialSummary, 4000) ?? "";
+  const trialEligibility = boundedText(rawInput.trialEligibility, 6000) ?? "";
+  const profile = validatePatientProfile(rawInput.profile);
+
+  if (!trialTitle || !profile) {
     return { error: "Required trial information is unavailable." };
+  }
+
+  if (!(await consumeAiQuota(session.user.id))) {
+    return { error: "Daily AI usage limit reached. Please try again tomorrow." };
   }
 
   try {
@@ -190,17 +220,17 @@ export async function runEligibilityPanelAction(input: {
       trialTitle,
       trialSummary,
       trialEligibility,
-      trialPhase: String(input.trialPhase ?? "Not specified").slice(0, 80),
-      trialStatus: String(input.trialStatus ?? "Unknown").slice(0, 80),
+      trialPhase: boundedText(rawInput.trialPhase, 80) ?? "Not specified",
+      trialStatus: boundedText(rawInput.trialStatus, 80) ?? "Unknown",
       profile: {
-        primaryDiagnosis: input.profile.primaryDiagnosis,
-        stage: input.profile.stage,
-        age: input.profile.age,
-        sex: input.profile.sex,
-        biomarkers: input.profile.biomarkers.slice(0, 12),
-        priorTreatments: input.profile.priorTreatments.slice(0, 10),
-        location: input.profile.location,
-        hasMetastaticDisease: input.profile.hasMetastaticDisease,
+        primaryDiagnosis: profile.primaryDiagnosis,
+        stage: profile.stage,
+        age: profile.age,
+        sex: profile.sex,
+        biomarkers: profile.biomarkers.slice(0, 12),
+        priorTreatments: profile.priorTreatments.slice(0, 10),
+        location: profile.location,
+        hasMetastaticDisease: profile.hasMetastaticDisease,
       },
     });
     return { result };

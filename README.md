@@ -72,8 +72,17 @@ cp .env.example .env.local
 |----------|----------|---------|
 | `NVIDIA_API_KEY` | Patient mode only | Structured extraction from narrative summaries |
 | `NVIDIA_MODEL` | No | Model override (default: `meta/llama-3.1-8b-instruct`) |
+| `AUTH_SECRET` | Auth required | Random secret used by Auth.js sessions |
+| `AUTH_GOOGLE_ID` | Auth required | Google OAuth client ID |
+| `AUTH_GOOGLE_SECRET` | Auth required | Google OAuth client secret |
+| `DATABASE_URL` | Auth required | PostgreSQL connection string for users and profiles |
 
 The API key is server-side only. Clinician mode works without it.
+
+When authentication is configured, run `npm run db:migrate` once against the
+PostgreSQL database. Public trial search remains available without signing in;
+Google sign-in is required for AI-generated patient summaries and the
+eligibility review panel. User profiles are stored in PostgreSQL.
 
 When configured, trial cards also support **Generate patient summary** for consultation materials.
  

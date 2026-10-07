@@ -958,10 +958,14 @@ function TrialCard({
           </div>
 
           {panelError && (
-            <p className="text-xs text-destructive mt-1 font-body">{panelError}</p>
+            <p className="text-xs text-destructive mt-1 font-body">
+              {panelError} {panelError.includes("sign in") && <Link href="/sign-in?callbackUrl=/results" className="underline">Sign in with Google</Link>}
+            </p>
           )}
           {simplifyError && (
-            <p className="text-xs text-destructive mt-1 font-body">{simplifyError}</p>
+            <p className="text-xs text-destructive mt-1 font-body">
+              {simplifyError} {simplifyError.includes("sign in") && <Link href="/sign-in?callbackUrl=/results" className="underline">Sign in with Google</Link>}
+            </p>
           )}
 
           {trial.criteriaEvaluations && trial.criteriaEvaluations.length > 0 && (
