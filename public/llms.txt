@@ -50,7 +50,7 @@ https://clinicaltrial.world/sitemap.xml
 
 ## Contact
 
-https://clinicaltrial.world
+mailto:contact@clinicaltrial.world
 
 ## License
 

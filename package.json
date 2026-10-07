@@ -25,6 +25,8 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
+    "@neon/config": "^1.8.4",
+    "@neon/env": "^1.5.1",
     "@prisma/adapter-pg": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "next": "^16.4.0",

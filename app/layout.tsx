@@ -109,6 +109,9 @@ export default function RootLayout({
               <Link href="/conditions" className="text-primary underline underline-offset-2">
                 Conditions
               </Link>
+              <a href="mailto:contact@clinicaltrial.world" className="text-primary underline underline-offset-2">
+                Contact
+              </a>
             </p>
             <p className="pb-6 section-hint text-sm leading-relaxed">
               For informational purposes only. This tool does not provide medical advice, diagnosis, or treatment recommendations and cannot enroll patients in studies. Eligibility estimates are based on publicly available trial criteria and the information provided. Confirm eligibility directly with the study team or an appropriate healthcare professional.

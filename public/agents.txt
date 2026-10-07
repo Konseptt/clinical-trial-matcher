@@ -41,7 +41,7 @@ AI-Citation: required
 AI-Attribution: https://clinicaltrial.world
 
 # ── Contact ───────────────────────────────────────────────────────────────────
-Contact: https://clinicaltrial.world
+Contact: mailto:contact@clinicaltrial.world
 License: MIT
 
 # ── Disclaimer ────────────────────────────────────────────────────────────────
