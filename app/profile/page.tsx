@@ -7,5 +7,11 @@ export default async function ProfilePage() {
   const session = await auth();
   if (!session?.user) redirect("/sign-in");
   const profile = await getSavedProfile();
-  return <ProfileForm email={session.user.email ?? ""} initialProfile={profile} />;
+  return (
+    <ProfileForm
+      email={session.user.email ?? ""}
+      initialName={session.user.name ?? ""}
+      initialProfile={profile}
+    />
+  );
 }

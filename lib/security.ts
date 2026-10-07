@@ -48,10 +48,10 @@ function timeline(value: unknown): TreatmentHistory[] {
   });
 }
 
-export function validatePatientProfile(value: unknown): PatientProfile | null {
+export function validatePatientProfile(value: unknown, options?: { requireDiagnosis?: boolean }): PatientProfile | null {
   const item = record(value);
   const primaryDiagnosis = text(item?.primaryDiagnosis);
-  if (!item || !primaryDiagnosis) return null;
+  if (!item || (options?.requireDiagnosis !== false && !primaryDiagnosis)) return null;
 
   const age = item.age === null || item.age === undefined
     ? null
@@ -63,7 +63,7 @@ export function validatePatientProfile(value: unknown): PatientProfile | null {
   return {
     age,
     sex,
-    primaryDiagnosis,
+    primaryDiagnosis: primaryDiagnosis ?? "",
     subtype: text(item.subtype),
     diseaseDuration: text(item.diseaseDuration),
     symptoms: stringList(item.symptoms),

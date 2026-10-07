@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import Link from "next/link";
 import { Figtree, Fira_Code, Fraunces } from "next/font/google";
+import { auth } from "@/auth";
 import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -47,7 +48,9 @@ export const metadata: Metadata = {
   },
 };
 
-function Masthead() {
+async function Masthead() {
+  const session = await auth();
+
   return (
     <header className="mb-8 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
       <Link href="/" className="font-display text-lg font-semibold text-foreground">
@@ -60,8 +63,8 @@ function Masthead() {
         <Link href="/conditions" className="font-body text-sm text-faint hover:text-foreground">
           Conditions
         </Link>
-        <Link href="/sign-in" className="font-body text-sm text-primary hover:text-foreground">
-          Sign in
+        <Link href={session?.user ? "/profile" : "/sign-in"} className="font-body text-sm text-primary hover:text-foreground">
+          {session?.user ? "Profile" : "Sign in"}
         </Link>
       </nav>
     </header>
