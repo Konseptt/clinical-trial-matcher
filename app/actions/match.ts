@@ -50,7 +50,7 @@ export async function getResultsAction(
       success: false,
       error:
         mode === "patient"
-          ? "Please provide a clinical summary of at least 15 characters."
+          ? "Please add a few words about your diagnosis, treatment, or trial goals."
           : "Please provide clinical notes of at least 20 characters.",
     };
   }

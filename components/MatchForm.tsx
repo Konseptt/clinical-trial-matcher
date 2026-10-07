@@ -65,7 +65,7 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
     if (!trimmed || trimmed.length < minLength) {
       setError(
         mode === "patient"
-          ? "Please provide a clinical summary of at least 15 characters."
+          ? "Please add a few words about your diagnosis, treatment, or trial goals."
           : "Please provide clinical notes of at least 20 characters."
       );
       return;
@@ -99,7 +99,7 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
         </h2>
         <p className="section-hint mb-6">
           {isPatient
-            ? "Include age, diagnosis, prior treatments, location, and treatment objectives. Narrative format is acceptable."
+            ? "Write a few words or a short summary about your diagnosis, prior treatments, location, and what you are looking for."
             : "Include age, sex, diagnosis, stage, biomarkers, prior therapies, and location where available."}
         </p>
         <label htmlFor="clinical-notes" className="sr-only">
@@ -114,7 +114,7 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
             onChange={(e) => setNotes(e.target.value)}
             placeholder={
               isPatient
-                ? "Example: I'm 58 and live near Boston. I have stage III HER2-positive breast cancer. I had surgery, chemo, and trastuzumab. Scans look stable. I'm looking for trials for newer HER2 treatments."
+                ? "Write a few words or a short summary. Example: I'm 58, live near Boston, and have stage III HER2-positive breast cancer. I had surgery, chemo, and trastuzumab, and I'm looking for newer treatment trials."
                 : "Example: 58-year-old woman with stage III HER2-positive breast cancer. Lives in Boston, MA. Prior mastectomy, chemo, and trastuzumab. Looking for trials near home."
             }
             rows={12}
@@ -135,7 +135,7 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
         <div className="compose-footer">
           <p id="notes-hint">
             {isPatient
-              ? "Minimum 15 characters required"
+              ? "A few words or a short summary is enough to get started"
               : "Minimum 20 characters required"}
           </p>
           <span aria-hidden="true">{notes.length.toLocaleString()} / 10,000</span>
