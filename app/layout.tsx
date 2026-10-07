@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import Link from "next/link";
 import { Figtree, Fira_Code, Fraunces } from "next/font/google";
-import { auth } from "@/auth";
+import { auth, signOut } from "@/auth";
 import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -66,6 +66,13 @@ async function Masthead() {
         <Link href={session?.user ? "/profile" : "/sign-in"} className="font-body text-sm text-primary hover:text-foreground">
           {session?.user ? "Profile" : "Sign in"}
         </Link>
+        {session?.user && (
+          <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
+            <button type="submit" className="font-body text-sm text-primary underline underline-offset-2 hover:text-foreground">
+              Log out
+            </button>
+          </form>
+        )}
       </nav>
     </header>
   );
@@ -112,7 +119,9 @@ export default function RootLayout({
               <Link href="/conditions" className="text-primary underline underline-offset-2">
                 Conditions
               </Link>
-              <span className="text-faint">contact@clinicaltrial.world</span>
+              <a href="mailto:contact@clinicaltrial.world" className="text-primary underline underline-offset-2">
+                contact@clinicaltrial.world
+              </a>
             </p>
             <p className="pb-6 section-hint text-sm leading-relaxed">
               For informational purposes only. This tool does not provide medical advice, diagnosis, or treatment recommendations and cannot enroll patients in studies. Eligibility estimates are based on publicly available trial criteria and the information provided. Confirm eligibility directly with the study team or an appropriate healthcare professional.
