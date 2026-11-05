@@ -7,6 +7,8 @@ export interface NormalizedCondition {
 
 interface KnownConditionRule {
   pattern: RegExp;
+  /** Case-sensitive alternative (acronyms that collide with ordinary words). */
+  exactPattern?: RegExp;
   canonicalName: string;
   defaultSubtype?: string;
   synonyms: string[];
@@ -19,7 +21,9 @@ interface KnownConditionRule {
 
 const KNOWN_CONDITIONS: KnownConditionRule[] = [
   {
-    pattern: /\b(?:multiple\s+sclerosis|rrms|spms|ppms|relapsing[\s-]remitting\s+ms|secondary\s+progressive\s+ms|primary\s+progressive\s+ms|\bms\b)\b/i,
+    pattern: /\b(?:multiple\s+sclerosis|rrms|spms|ppms|relapsing[\s-]remitting\s+ms|secondary\s+progressive\s+ms|primary\s+progressive\s+ms)\b/i,
+    // Bare "MS" only in capitals: /\bms\b/i matched the honorific "Ms. Jones".
+    exactPattern: /\bMS\b/,
     canonicalName: "Multiple Sclerosis",
     synonyms: ["Multiple Sclerosis", "MS", "Demyelinating Disease"],
     subtypes: [
@@ -226,6 +230,18 @@ export function registryConditionQuery(condition: ListedCondition): string {
   return kept.join(" OR ") || condition.canonicalName;
 }
 
+const FAMILY_CONTEXT =
+  /\b(?:mother|father|mom|dad|sister|brother|sibling|aunt|uncle|grandmother|grandfather|cousin|daughter|son|family\s+history)\b[^.;\n]{0,40}$/i;
+
+/** True when the pattern matches somewhere that is not a relative's history ("mother had MS"). */
+function matchesOwnDiagnosis(pattern: RegExp, text: string): boolean {
+  const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+  for (const m of text.matchAll(re)) {
+    if (!FAMILY_CONTEXT.test(text.slice(0, m.index))) return true;
+  }
+  return false;
+}
+
 export function normalizeCondition(rawInput: string): NormalizedCondition {
   const text = String(rawInput ?? "").trim();
   if (!text) {
@@ -238,7 +254,10 @@ export function normalizeCondition(rawInput: string): NormalizedCondition {
   }
 
   for (const rule of KNOWN_CONDITIONS) {
-    if (rule.pattern.test(text)) {
+    if (
+      matchesOwnDiagnosis(rule.pattern, text) ||
+      (rule.exactPattern && matchesOwnDiagnosis(rule.exactPattern, text))
+    ) {
       let subtype: string | null = rule.defaultSubtype ?? null;
       let matchedSynonyms = [...rule.synonyms];
 

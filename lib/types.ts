@@ -70,6 +70,8 @@ export interface MatchScoreBreakdown {
   phaseBonus: number;
   locationMatch: number;
   sexMatch: number;
+  /** -25 when the patient is outside structured registry age limits. */
+  ageMatch?: number;
   biomarkerPenalties: number;
   stagePenalties: number;
   washoutPenalties?: number;

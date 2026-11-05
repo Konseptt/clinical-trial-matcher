@@ -35,6 +35,10 @@ export interface RegistryTrial {
   }>;
   eligibilityText: string;
   url: string;
+  /** Structured registry limits when the source publishes them (CT.gov does). */
+  sex?: "all" | "female" | "male";
+  minAgeYears?: number | null;
+  maxAgeYears?: number | null;
 }
 
 export interface RegistryQueryResult {
