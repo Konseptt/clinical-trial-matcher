@@ -7,6 +7,11 @@ import { fetchPublicStudy, isNctId } from "@/lib/public-studies";
 
 export const revalidate = 86400;
 
+// Empty list = render each trial on first request, then serve it from the ISR cache.
+export async function generateStaticParams() {
+  return [];
+}
+
 export async function generateMetadata({
   params,
 }: {
