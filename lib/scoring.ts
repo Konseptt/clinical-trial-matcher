@@ -10,6 +10,7 @@ import type { RegistryTrial } from "./registries/types";
 import { isPhaseTwoOrAbove, parsePhaseRank } from "./registries/filters";
 import { geocodeLocation, calculateDistance } from "./location";
 import { normalizeCondition } from "./normalization";
+import { lexicalScores, tokenize } from "./lexical";
 
 function textContains(text: string, term: string): boolean {
   return text.toLowerCase().includes(term.toLowerCase());
@@ -521,9 +522,22 @@ export function evaluateCriteria(
   return { criteriaEvaluations, reasonsMatched, reasonsToConfirm };
 }
 
+/** Query terms for lexical relevance: raw notes when we have them, else profile fields. */
+export function profileQueryText(profile: PatientProfile): string {
+  return [
+    profile.primaryDiagnosis,
+    profile.subtype ?? "",
+    profile.stage ? `stage ${profile.stage}` : "",
+    ...profile.biomarkers,
+    ...profile.priorTreatments,
+    ...(profile.interests ?? []),
+  ].join(" ");
+}
+
 async function scoreTrial(
   trial: RegistryTrial,
-  profile: PatientProfile
+  profile: PatientProfile,
+  query: Set<string>
 ): Promise<{
   score: number;
   breakdown: MatchScoreBreakdown;
@@ -618,10 +632,10 @@ async function scoreTrial(
   // 7. Phase Bonus
   let phaseBonus = 0;
   const phaseRank = parsePhaseRank(trial.phase);
-  if (phaseRank >= 4) phaseBonus = 12;
-  else if (phaseRank === 3) phaseBonus = 10;
-  else if (phaseRank === 2) phaseBonus = 8;
-  else if (phaseRank === 1) phaseBonus = 4;
+  if (phaseRank >= 4) phaseBonus = 6;
+  else if (phaseRank === 3) phaseBonus = 5;
+  else if (phaseRank === 2) phaseBonus = 4;
+  else if (phaseRank === 1) phaseBonus = 2;
 
   // 8. Location Match & Proximity
   let locationMatch = 0;
@@ -698,6 +712,13 @@ async function scoreTrial(
     }
   }
 
+  // 11b. Lexical relevance (BM25 vs title) and patient terms in exclusion criteria
+  const { textRelevance, exclusionOverlap } = lexicalScores(
+    query,
+    trial.title,
+    splitCriteria(trial.eligibilityText || "").exclusion
+  );
+
   // 12. Penalties
   const biomarkerPenalties =
     hasContradictoryBiomarkers(combined, profile) +
@@ -715,7 +736,9 @@ async function scoreTrial(
     locationMatch + 
     sexMatch +
     ageMatch +
-    biomarkerGatesMatch - 
+    textRelevance +
+    biomarkerGatesMatch -
+    exclusionOverlap - 
     biomarkerPenalties - 
     stagePenalties -
     washoutPenalties;
@@ -744,6 +767,8 @@ async function scoreTrial(
       locationMatch,
       sexMatch,
       ageMatch,
+      textRelevance: Math.round(textRelevance),
+      exclusionOverlap: Math.round(exclusionOverlap),
       biomarkerPenalties,
       stagePenalties,
       washoutPenalties,
@@ -790,8 +815,10 @@ export function rankMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
 
 export async function scoreAllRegistryTrials(
   trials: RegistryTrial[],
-  profile: PatientProfile
+  profile: PatientProfile,
+  queryText: string = profileQueryText(profile)
 ): Promise<MatchedTrial[]> {
+  const query = new Set(tokenize(queryText));
   const scoredPromises = trials.map(async (trial) => {
     const {
       score,
@@ -802,7 +829,7 @@ export async function scoreAllRegistryTrials(
       criteriaEvaluations,
       reasonsMatched,
       reasonsToConfirm,
-    } = await scoreTrial(trial, profile);
+    } = await scoreTrial(trial, profile, query);
 
     return {
       registry: trial.registry,
@@ -830,8 +857,9 @@ export async function scoreAllRegistryTrials(
 
 export async function scoreAndRankTrials(
   trials: RegistryTrial[],
-  profile: PatientProfile
+  profile: PatientProfile,
+  queryText?: string
 ): Promise<MatchedTrial[]> {
-  const scored = await scoreAllRegistryTrials(trials, profile);
+  const scored = await scoreAllRegistryTrials(trials, profile, queryText);
   return rankMatchedTrials(scored);
 }
