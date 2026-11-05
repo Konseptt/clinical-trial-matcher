@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { signIn } from "@/auth";
+
+export const metadata: Metadata = { title: "Sign in", robots: { index: false, follow: true } };
 
 export default async function SignInPage({
   searchParams,

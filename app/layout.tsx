@@ -46,7 +46,16 @@ export const metadata: Metadata = {
     url: SITE_URL,
     siteName: "Clinical Trial Matcher",
     type: "website",
+    locale: "en_US",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "Clinical Trial Matcher",
+    description:
+      "Search ClinicalTrials.gov, EU, WHO, and ISRCTN registries with your clinical notes. Estimates only.",
+  },
+  robots: { index: true, follow: true, "max-snippet": -1, "max-image-preview": "large" },
+  keywords: ["clinical trials", "clinical trial search", "recruiting studies", "trial eligibility", "ClinicalTrials.gov", "EU clinical trials register", "WHO ICTRP", "ISRCTN"],
 };
 
 function Masthead() {

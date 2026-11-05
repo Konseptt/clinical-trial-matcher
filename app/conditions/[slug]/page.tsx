@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { absoluteUrl } from "@/lib/site";
+import { jsonLdHtml, breadcrumbs } from "@/lib/structured-data";
 import { notFound } from "next/navigation";
 import { formatTrialStatus } from "@/lib/format";
 import { findKnownCondition, listKnownConditions } from "@/lib/normalization";
@@ -25,6 +27,7 @@ export async function generateMetadata({
     title: `${condition.canonicalName} recruiting studies and washout check`,
     description: `Recruiting and not-yet-recruiting ${condition.canonicalName} studies from ClinicalTrials.gov, plus the query this matcher sends. The study team confirms eligibility.`,
     alternates: { canonical: `/conditions/${condition.slug}` },
+    openGraph: { url: `/conditions/${condition.slug}`, type: "website" },
   };
 }
 
@@ -56,6 +59,31 @@ export default async function ConditionPage({
 
   return (
     <article className="max-w-3xl">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={jsonLdHtml({
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "CollectionPage",
+              name: `${condition.canonicalName} recruiting clinical trials`,
+              url: absoluteUrl(`/conditions/${condition.slug}`),
+              about: { "@type": "MedicalCondition", name: condition.canonicalName, alternateName: condition.synonyms },
+              mainEntity: {
+                "@type": "ItemList",
+                numberOfItems: snapshot.studies.length,
+                itemListElement: snapshot.studies.map((study, i) => ({
+                  "@type": "ListItem",
+                  position: i + 1,
+                  url: absoluteUrl(`/trials/${study.nctId}`),
+                  name: study.title,
+                })),
+              },
+            },
+            breadcrumbs([["Home", "/"], ["Conditions", "/conditions"], [condition.canonicalName, `/conditions/${condition.slug}`]]),
+          ],
+        })}
+      />
       <p className="section-label">Condition</p>
       <h1 className="section-title mt-2">
         {condition.canonicalName} recruiting studies and washout check
