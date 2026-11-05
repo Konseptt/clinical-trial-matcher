@@ -7,8 +7,6 @@ const RECRUITING_STATUSES = new Set([
   "NOT_YET_RECRUITING",
   "ENROLLING BY INVITATION",
   "ENROLLING_BY_INVITATION",
-  "ACTIVE NOT RECRUITING",
-  "ACTIVE_NOT_RECRUITING",
   "ONGOING",
   "AUTHORISED",
   "AUTHORIZED",
@@ -24,6 +22,8 @@ const EXCLUDED_STATUSES = new Set([
   "STOPPED",
   "PREMATURELY ENDED",
   "NO LONGER RECRUITING",
+  // Enrollment closed: patients cannot join, even though follow-up is ongoing.
+  "ACTIVE NOT RECRUITING",
 ]);
 
 export function normalizeStatus(status: string): string {

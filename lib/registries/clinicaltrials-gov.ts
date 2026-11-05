@@ -1,6 +1,7 @@
 import { capTrialSummary } from "@/lib/format";
 import type { ClinicalTrialsGovResponse, ClinicalTrialsGovStudy } from "@/lib/types";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
+import { REGISTRY_TIMEOUT_MS } from "./types";
 
 const API_BASE = "https://clinicaltrials.gov/api/v2/studies";
 
@@ -21,6 +22,22 @@ export function normalizePhase(phases?: string[]): string {
       return num ? `Phase ${num}` : p;
     })
     .join(", ");
+}
+
+function normalizeSex(sex?: string): RegistryTrial["sex"] {
+  const s = sex?.toUpperCase();
+  if (s === "FEMALE") return "female";
+  if (s === "MALE") return "male";
+  return "all";
+}
+
+/** "18 Years" | "6 Months" | "2 Weeks" | "N/A" → years (null when unbounded). */
+export function parseAgeYears(age?: string): number | null {
+  const m = age?.match(/^\s*(\d+(?:\.\d+)?)\s*(year|month|week|day|hour|minute)/i);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  const per: Record<string, number> = { year: 1, month: 12, week: 52.18, day: 365.25, hour: 8766, minute: 525960 };
+  return n / per[m[2].toLowerCase()];
 }
 
 export function mapStudy(study: ClinicalTrialsGovStudy): RegistryTrial {
@@ -47,6 +64,9 @@ export function mapStudy(study: ClinicalTrialsGovStudy): RegistryTrial {
     eligibilityText:
       study.protocolSection.eligibilityModule?.eligibilityCriteria ?? "",
     url: `https://clinicaltrials.gov/study/${id.nctId}`,
+    sex: normalizeSex(study.protocolSection.eligibilityModule?.sex),
+    minAgeYears: parseAgeYears(study.protocolSection.eligibilityModule?.minimumAge),
+    maxAgeYears: parseAgeYears(study.protocolSection.eligibilityModule?.maximumAge),
   };
 }
 
@@ -57,7 +77,7 @@ export async function queryClinicalTrialsGov(
   
   const searchParams = new URLSearchParams({
     "query.cond": sanitizedCondition || "clinical trial",
-    "filter.overallStatus": "RECRUITING,NOT_YET_RECRUITING,ENROLLING_BY_INVITATION,ACTIVE_NOT_RECRUITING",
+    "filter.overallStatus": "RECRUITING,NOT_YET_RECRUITING,ENROLLING_BY_INVITATION",
     pageSize: "30",
     format: "json",
     fields:
@@ -77,7 +97,8 @@ export async function queryClinicalTrialsGov(
 
   const response = await fetch(`${API_BASE}?${searchParams.toString()}`, {
     headers: { Accept: "application/json" },
-    next: { revalidate: 0 },
+    next: { revalidate: 900 },
+    signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
   });
 
   if (!response.ok) {

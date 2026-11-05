@@ -1,5 +1,6 @@
 import { capTrialSummary } from "@/lib/format";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
+import { REGISTRY_TIMEOUT_MS } from "./types";
 
 const LEGACY_SEARCH =
   "https://www.clinicaltrialsregister.eu/ctr-search/search";
@@ -87,7 +88,7 @@ export function parseLegacyHtml(html: string): RegistryTrial[] {
         country: code,
       })),
       eligibilityText: "",
-      url: `https://www.clinicaltrialsregister.eu/ctr-search/trial/${trialId}/GB`,
+      url: `https://www.clinicaltrialsregister.eu/ctr-search/trial/${trialId}/${countries[0] ?? "GB"}`,
     });
   }
 
@@ -165,9 +166,10 @@ async function queryCtisApi(
           containAll: searchQuery,
           status: [2, 3, 4],
         },
-        pagination: { page: 1, pageSize: 10 },
+        pagination: { page: 1, size: 10 },
       }),
-      next: { revalidate: 0 },
+      next: { revalidate: 900 },
+    signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
     }
   );
 
@@ -203,7 +205,8 @@ export async function queryEuCtr(
       Accept: "text/html",
       "User-Agent": "ClinicalTrialMatcher/1.0",
     },
-    next: { revalidate: 0 },
+    next: { revalidate: 900 },
+    signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
   });
 
   if (!response.ok) {

@@ -1,14 +1,16 @@
+import { timingSafeEqual } from "node:crypto";
 import { collectIndexNowUrls, submitIndexNow } from "@/lib/indexnow";
 
-export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET?.trim();
-  const authorized = request.headers.get("authorization") === `Bearer ${secret}`;
+function isAuthorized(header: string | null, secret: string | undefined): boolean {
+  if (!secret || !header) return false;
+  const a = Buffer.from(header);
+  const b = Buffer.from(`Bearer ${secret}`);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
-  if (process.env.VERCEL_ENV === "production") {
-    if (!secret || !authorized) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  } else if (secret && !authorized) {
+export async function GET(request: Request) {
+  // Fail closed in every environment: preview deployments are public too.
+  if (!isAuthorized(request.headers.get("authorization"), process.env.CRON_SECRET?.trim())) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 

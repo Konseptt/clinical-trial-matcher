@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { signIn } from "@/auth";
+
+export const metadata: Metadata = { title: "Sign in", robots: { index: false, follow: true } };
 
 export default async function SignInPage({
   searchParams,
@@ -6,7 +9,7 @@ export default async function SignInPage({
   searchParams: Promise<{ callbackUrl?: string }>;
 }) {
   const params = await searchParams;
-  const callbackUrl = params.callbackUrl?.startsWith("/") && !params.callbackUrl.startsWith("//")
+  const callbackUrl = /^\/(?![\/\\])/.test(params.callbackUrl ?? "")
     ? params.callbackUrl
     : "/profile";
 

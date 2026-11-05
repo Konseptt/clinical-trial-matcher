@@ -73,3 +73,6 @@ tsconfig.tsbuildinfo
 
 .vercel
 .neon
+
+# TREC benchmark fixture (rebuild with scripts/build-trec-fixture.py)
+trec*.json

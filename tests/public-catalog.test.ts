@@ -38,10 +38,10 @@ describe("excerptCriteria", () => {
 
 describe("indexNowBody", () => {
   it("points the key file at the public host", () => {
-    const body = indexNowBody("abc12345", ["https://clinicaltrial.ranjansharma.info.np/conditions"]);
-    expect(body.host).toBe("clinicaltrial.ranjansharma.info.np");
+    const body = indexNowBody("abc12345", ["https://clinicaltrial.world/conditions"]);
+    expect(body.host).toBe("clinicaltrial.world");
     expect(body.keyLocation).toBe(
-      "https://clinicaltrial.ranjansharma.info.np/abc12345.txt"
+      "https://clinicaltrial.world/abc12345.txt"
     );
     expect(body.urlList).toHaveLength(1);
   });

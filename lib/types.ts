@@ -70,6 +70,12 @@ export interface MatchScoreBreakdown {
   phaseBonus: number;
   locationMatch: number;
   sexMatch: number;
+  /** -25 when the patient is outside structured registry age limits. */
+  ageMatch?: number;
+  /** BM25 match of patient terms to the trial title (0-40). */
+  textRelevance?: number;
+  /** Penalty: patient terms that appear in exclusion criteria (0-30). */
+  exclusionOverlap?: number;
   biomarkerPenalties: number;
   stagePenalties: number;
   washoutPenalties?: number;

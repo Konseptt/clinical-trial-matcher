@@ -1,6 +1,9 @@
 import type { PatientLocation, PatientProfile } from "@/lib/types";
 import { normalizeCondition } from "@/lib/normalization";
 
+/** Per-request cap so one slow registry cannot stall the whole match. */
+export const REGISTRY_TIMEOUT_MS = 8000;
+
 export type RegistrySource =
   | "ClinicalTrials.gov"
   | "WHO ICTRP"
@@ -32,6 +35,10 @@ export interface RegistryTrial {
   }>;
   eligibilityText: string;
   url: string;
+  /** Structured registry limits when the source publishes them (CT.gov does). */
+  sex?: "all" | "female" | "male";
+  minAgeYears?: number | null;
+  maxAgeYears?: number | null;
 }
 
 export interface RegistryQueryResult {

@@ -19,12 +19,13 @@ import type {
   SimplifiedTrialGuide,
 } from "@/lib/types";
 import { boundedText, validatePatientProfile } from "@/lib/security";
+import { canonicalTrialId } from "@/lib/registries";
 
 function dedupeMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
   const byKey = new Map<string, MatchedTrial>();
 
   for (const trial of trials) {
-    const key = `${trial.registry}:${trial.trialId}`.toLowerCase();
+    const key = canonicalTrialId(trial.trialId);
     const existing = byKey.get(key);
     if (!existing || trial.matchScore > existing.matchScore) {
       byKey.set(key, trial);
@@ -32,6 +33,32 @@ function dedupeMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
   }
 
   return Array.from(byKey.values());
+}
+
+const MAX_CLIENT_TRIALS = 50;
+
+function sanitizeClientTrial(t: unknown): RegistryTrial | null {
+  if (!t || typeof t !== "object") return null;
+  const r = t as Record<string, unknown>;
+  const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max).trim() : "");
+  const trialId = str(r.trialId, 80);
+  const title = str(r.title, 500);
+  if (!trialId || !title) return null;
+  const locations = Array.isArray(r.locations) ? r.locations.slice(0, 30) : [];
+  return {
+    registry: "WHO ICTRP",
+    trialId,
+    title,
+    phase: str(r.phase, 80),
+    summary: str(r.summary, 4000),
+    status: str(r.status, 80),
+    eligibilityText: str(r.eligibilityText, 6000),
+    url: str(r.url, 500),
+    locations: locations.map((l) => {
+      const o = (l && typeof l === "object" ? l : {}) as Record<string, unknown>;
+      return { facility: str(o.facility, 200), city: str(o.city, 120), state: str(o.state, 120), country: str(o.country, 120) };
+    }),
+  };
 }
 
 export type MatchActionResult =
@@ -61,7 +88,13 @@ export async function getResultsAction(
   }
 
   try {
-    const data = await runMatchPipeline(trimmedNotes, mode);
+    let allowAi = false;
+    if (mode === "patient") {
+      const userId = (await auth())?.user?.id;
+      // Quota/DB failure must not fail the search: fall back to rule extraction.
+      allowAi = userId ? await consumeAiQuota(userId).catch(() => false) : false;
+    }
+    const data = await runMatchPipeline(trimmedNotes, mode, allowAi);
     return { success: true, data };
   } catch (error) {
     console.error("Clinical trial match pipeline failure:", error);
@@ -103,6 +136,15 @@ export async function integrateWhoTrialsAction(
   profile: PatientProfile,
   existing: MatchResponse
 ): Promise<MatchResponse> {
+  // Anonymous, client-supplied input: validate like every other entry point.
+  const safeProfile = validatePatientProfile(profile);
+  if (!safeProfile || !Array.isArray(whoTrials)) return existing;
+  profile = safeProfile;
+  whoTrials = whoTrials.slice(0, MAX_CLIENT_TRIALS).flatMap((t) => {
+    const trial = sanitizeClientTrial(t);
+    return trial ? [trial] : [];
+  });
+
   try {
     const filtered = applyTrialFilters(whoTrials, {
       location: profile.location,
@@ -118,7 +160,7 @@ export async function integrateWhoTrialsAction(
       summary.registry === "WHO ICTRP"
         ? {
             ...summary,
-            trialCount: whoTrials.length,
+            trialCount: filtered.length,
             error: undefined,
           }
         : summary

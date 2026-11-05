@@ -10,6 +10,7 @@ import type { RegistryTrial } from "./registries/types";
 import { isPhaseTwoOrAbove, parsePhaseRank } from "./registries/filters";
 import { geocodeLocation, calculateDistance } from "./location";
 import { normalizeCondition } from "./normalization";
+import { lexicalScores, tokenize } from "./lexical";
 
 function textContains(text: string, term: string): boolean {
   return text.toLowerCase().includes(term.toLowerCase());
@@ -17,6 +18,24 @@ function textContains(text: string, term: string): boolean {
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Whole-token match: "ms" must not hit "symptoms", "iv" must not hit "positive". */
+export function hasTerm(text: string, term: string): boolean {
+  const t = term.trim().toLowerCase();
+  if (!t) return false;
+  return new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(t)}(?![a-z0-9])`, "i").test(text);
+}
+
+/**
+ * Split registry eligibility text into inclusion / exclusion parts.
+ * When no headings exist, everything counts as inclusion.
+ */
+export function splitCriteria(text: string): { inclusion: string; exclusion: string } {
+  const lower = text.toLowerCase();
+  const ex = lower.search(/exclusion\s+criteria|\bexclusions?\s*:|\bexclude(?:d)?\s*:/);
+  if (ex < 0) return { inclusion: lower, exclusion: "" };
+  return { inclusion: lower.slice(0, ex), exclusion: lower.slice(ex) };
 }
 
 function getDaysSinceDate(dateStr: string): number {
@@ -35,10 +54,10 @@ export function extractWashoutPeriod(eligibilityText: string, treatmentName: str
   const safeName = escapeRegExp(name);
 
   const patterns = [
-    new RegExp(`${safeName}[^.]*?(?:at least|minimum of|washout|interval of)\\s*(\\d+)\\s*(day|week|month)`, "i"),
-    new RegExp(`(\\d+)\\s*(day|week|month)s?\\s*(?:since|after|prior to)[^.]*?${safeName}`, "i"),
-    new RegExp(`washout(?:\\s+period)?\\s+(?:of\\s+)?(\\d+)\\s*(day|week|month)s?[^.]*?${safeName}`, "i"),
-    new RegExp(`(\\d+)\\s*-\\s*(day|week|month)\\s+washout[^.]*?${safeName}`, "i"),
+    new RegExp(`${safeName}[^.\\n]{0,200}?(?:at least|minimum of|washout|interval of)\\s*(\\d+)\\s*(day|week|month)`, "i"),
+    new RegExp(`(\\d+)\\s*(day|week|month)s?\\s*(?:since|after|prior to)[^.\\n]{0,200}?${safeName}`, "i"),
+    new RegExp(`washout(?:\\s+period)?\\s+(?:of\\s+)?(\\d+)\\s*(day|week|month)s?[^.\\n]{0,200}?${safeName}`, "i"),
+    new RegExp(`(\\d+)\\s*-\\s*(day|week|month)\\s+washout[^.\\n]{0,200}?${safeName}`, "i"),
   ];
   
   for (const pattern of patterns) {
@@ -155,7 +174,7 @@ export function evaluateBiomarkerGates(
   }
 
   // 4. KRAS / NRAS check
-  if ((text.includes("kras") || text.includes("nras")) && (text.includes("wild-type") || text.includes("wild type") || text.includes("wt"))) {
+  if ((text.includes("kras") || text.includes("nras")) && (text.includes("wild-type") || text.includes("wild type") || hasTerm(text, "wt"))) {
     const krasOk = hasMarker("kras", false);
     const nrasOk = hasMarker("nras", false);
     gates.push({
@@ -201,10 +220,10 @@ export function hasContradictoryBiomarkers(
   let penalty = 0;
 
   const isHer2Positive = profile.biomarkers.some((m) =>
-    /her2\s*positive/i.test(m)
+    /her2[\s-]*positive/i.test(m)
   );
   const isHer2Negative = profile.biomarkers.some((m) =>
-    /her2\s*negative/i.test(m)
+    /her2[\s-]*negative/i.test(m)
   );
   const isErNegative = profile.biomarkers.some((m) =>
     /(?<![a-z])er\s*negative/i.test(m)
@@ -213,7 +232,7 @@ export function hasContradictoryBiomarkers(
     /(?<![a-z])er\s*positive/i.test(m)
   );
 
-  if (isHer2Positive && /her2[\s\-]*negative|her2\-|her2\s*neg/i.test(combined)) {
+  if (isHer2Positive && /her2[\s\-]*negative|her2-(?![a-z0-9])|her2\s*neg/i.test(combined)) {
     penalty += 30;
   }
   if (isHer2Negative && /her2[\s\-]*positive|her2\+|her2\s*pos/i.test(combined)) {
@@ -222,7 +241,7 @@ export function hasContradictoryBiomarkers(
   if (isErNegative && /(?<![a-z])er[\s\-]*positive|(?<![a-z])er\+|estrogen receptor[\s\-]*positive/i.test(combined)) {
     penalty += 20;
   }
-  if (isErPositive && /(?<![a-z])er[\s\-]*negative|(?<![a-z])er\-|estrogen receptor[\s\-]*negative/i.test(combined)) {
+  if (isErPositive && /(?<![a-z])er[\s\-]*negative|(?<![a-z])er-(?![a-z0-9])|estrogen receptor[\s\-]*negative/i.test(combined)) {
     penalty += 20;
   }
   if (isHer2Positive && /triple[\s-]negative|tnbc/i.test(combined)) {
@@ -269,31 +288,42 @@ export function biomarkerGatePenalty(
 
 function hasContradictoryStageContext(
   combined: string,
-  profile: PatientProfile
+  profile: PatientProfile,
+  eligibilityText = ""
 ): number {
   if (profile.hasMetastaticDisease !== false) return 0;
 
-  let penalty = 0;
-  const metastaticTerms = [
-    "metastatic",
-    "metastases",
-    "metastasis",
-    "leptomeningeal",
-    "brain metastas",
-    "stage iv",
-  ];
+  // Exclusion criteria ("no known brain metastases") describe who is turned
+  // away; they must not penalise the non-metastatic patient they admit.
+  const { inclusion } = splitCriteria(eligibilityText);
+  const titleSummary = eligibilityText ? combined.replace(eligibilityText.toLowerCase(), "") : combined;
+  const text = `${titleSummary} ${inclusion}`.replace(
+    /\b(?:no|without|absence of|non)[\s-]+(?:known\s+|evidence of\s+|active\s+|untreated\s+|brain\s+|cns\s+|distant\s+)*metasta\w*/g,
+    " "
+  );
 
-  for (const term of metastaticTerms) {
-    if (combined.includes(term)) {
-      penalty += 12;
-    }
+  const concepts = [/metasta/, /leptomeningeal/, /\bstage\s+iv\b/, /\bm1\b/];
+  const hits = concepts.filter((re) => re.test(text)).length;
+  return Math.min(hits * 12, 35);
+}
+
+function isSexExcluded(trial: RegistryTrial, profile: PatientProfile, combined: string): boolean {
+  if (profile.sex === "unknown") return false;
+  if (trial.sex && trial.sex !== "all") return trial.sex !== profile.sex;
+  if (profile.sex === "female") return /\b(?:males?|men)\s+only\b/i.test(combined);
+  return /\b(?:females?|women)\s+only\b/i.test(combined);
+}
+
+/** Reason string when the patient's age falls outside registry limits, else null. */
+function ageOutOfRange(trial: RegistryTrial, profile: PatientProfile): string | null {
+  if (profile.age === null) return null;
+  if (trial.minAgeYears != null && profile.age < trial.minAgeYears) {
+    return `Patient age ${profile.age} below registry minimum ${Math.round(trial.minAgeYears)}`;
   }
-
-  if (/\bm1\b/i.test(combined)) {
-    penalty += 12;
+  if (trial.maxAgeYears != null && profile.age > trial.maxAgeYears) {
+    return `Patient age ${profile.age} above registry maximum ${Math.round(trial.maxAgeYears)}`;
   }
-
-  return Math.min(penalty, 35);
+  return null;
 }
 
 export function evaluateCriteria(
@@ -313,7 +343,9 @@ export function evaluateCriteria(
 
   // 1. Diagnosis requirement
   const diagWords = norm.canonicalName.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
-  const diagHit = diagWords.some((w) => combined.includes(w)) || norm.synonyms.some((s) => combined.includes(s.toLowerCase()));
+  const diagHit =
+    (diagWords.length > 0 && diagWords.every((w) => hasTerm(combined, w))) ||
+    norm.synonyms.some((s) => hasTerm(combined, s));
 
   if (diagHit) {
     criteriaEvaluations.push({
@@ -336,7 +368,7 @@ export function evaluateCriteria(
   const subtype = profile.subtype || norm.subtype;
   if (subtype) {
     const subWords = subtype.toLowerCase().replace(/[\(\)]/g, "").split(/\s+/).filter((w) => w.length > 3);
-    const subHit = subWords.some((w) => combined.includes(w));
+    const subHit = subWords.some((w) => hasTerm(combined, w));
     if (subHit) {
       criteriaEvaluations.push({
         name: "Disease subtype requirement",
@@ -358,7 +390,14 @@ export function evaluateCriteria(
 
   // 3. Prior Treatments & Therapy requirements
   if (profile.priorTreatments && profile.priorTreatments.length > 0) {
-    const matchedTreatments = profile.priorTreatments.filter((t) => combined.includes(t.toLowerCase()));
+    const { inclusion, exclusion } = splitCriteria(trial.eligibilityText || "");
+    const excluded = profile.priorTreatments.filter((t) => hasTerm(exclusion, t));
+    const matchedTreatments = profile.priorTreatments.filter(
+      (t) => !excluded.includes(t) && hasTerm(`${trial.title} ${trial.summary} ${inclusion}`, t)
+    );
+    if (excluded.length > 0) {
+      reasonsToConfirm.push(`Exclusion criteria mention ${excluded.join(", ")} — confirm timing/eligibility`);
+    }
     if (matchedTreatments.length > 0) {
       criteriaEvaluations.push({
         name: "Prior therapy compatibility",
@@ -399,12 +438,27 @@ export function evaluateCriteria(
   }
 
   // 5. Age requirement
-  if (profile.age !== null) {
+  const ageOut = ageOutOfRange(trial, profile);
+  if (profile.age !== null && ageOut) {
+    criteriaEvaluations.push({
+      name: "Age requirement",
+      category: "age",
+      status: "not-met",
+      evidence: ageOut,
+    });
+  } else if (profile.age !== null && (trial.minAgeYears != null || trial.maxAgeYears != null)) {
     criteriaEvaluations.push({
       name: "Age requirement",
       category: "age",
       status: "met",
-      evidence: `Patient age (${profile.age}) evaluated against inclusion age range`,
+      evidence: `Patient age ${profile.age} within registry limits (${trial.minAgeYears ?? "no min"}–${trial.maxAgeYears ?? "no max"})`,
+    });
+  } else if (profile.age !== null) {
+    criteriaEvaluations.push({
+      name: "Age requirement",
+      category: "age",
+      status: "unknown",
+      evidence: `Registry publishes no structured age limits; confirm age ${profile.age} against protocol`,
     });
   } else {
     criteriaEvaluations.push({
@@ -418,8 +472,7 @@ export function evaluateCriteria(
 
   // 6. Sex requirement
   if (profile.sex !== "unknown") {
-    const sexMismatch = (profile.sex === "female" && /\bmale only\b/i.test(combined)) ||
-      (profile.sex === "male" && /\bfemale only\b/i.test(combined));
+    const sexMismatch = isSexExcluded(trial, profile, combined);
     criteriaEvaluations.push({
       name: "Sex requirement",
       category: "sex",
@@ -469,9 +522,22 @@ export function evaluateCriteria(
   return { criteriaEvaluations, reasonsMatched, reasonsToConfirm };
 }
 
+/** Query terms for lexical relevance: raw notes when we have them, else profile fields. */
+export function profileQueryText(profile: PatientProfile): string {
+  return [
+    profile.primaryDiagnosis,
+    profile.subtype ?? "",
+    profile.stage ? `stage ${profile.stage}` : "",
+    ...profile.biomarkers,
+    ...profile.priorTreatments,
+    ...(profile.interests ?? []),
+  ].join(" ");
+}
+
 async function scoreTrial(
   trial: RegistryTrial,
-  profile: PatientProfile
+  profile: PatientProfile,
+  query: Set<string>
 ): Promise<{
   score: number;
   breakdown: MatchScoreBreakdown;
@@ -490,11 +556,11 @@ async function scoreTrial(
   let diagnosisMatch = 0;
   const diagnosis = norm.canonicalName.toLowerCase();
   const diagnosisWords = diagnosis.split(/\s+/).filter((w) => w.length > 3);
-  const diagnosisHits = diagnosisWords.filter((w) => combined.includes(w)).length;
+  const diagnosisHits = diagnosisWords.filter((w) => hasTerm(combined, w)).length;
   if (diagnosisWords.length > 0) {
     diagnosisMatch = Math.round(Math.min(25, (diagnosisHits / diagnosisWords.length) * 25));
   }
-  if (norm.synonyms.some((s) => combined.includes(s.toLowerCase()))) {
+  if (norm.synonyms.some((s) => hasTerm(combined, s))) {
     diagnosisMatch = Math.max(diagnosisMatch, 25);
   }
 
@@ -502,7 +568,8 @@ async function scoreTrial(
   const subtype = profile.subtype || norm.subtype;
   if (subtype) {
     const subLower = subtype.toLowerCase();
-    if (combined.includes(subLower) || combined.includes("rrms") || combined.includes("relapsing")) {
+    const names = [subLower.replace(/\s*\([^)]*\)/g, ""), ...[...subLower.matchAll(/\(([^)]+)\)/g)].map((m) => m[1])];
+    if (names.some((n) => hasTerm(combined, n)) || (subLower.includes("relapsing") && hasTerm(combined, "relapsing"))) {
       diagnosisMatch = Math.min(30, diagnosisMatch + 5);
     }
   }
@@ -512,7 +579,7 @@ async function scoreTrial(
   for (const marker of profile.biomarkers) {
     const markerLower = marker.toLowerCase();
     const isShortReceptor = /^(?:er|pr)\b/.test(markerLower);
-    if (!isShortReceptor && combined.includes(markerLower)) {
+    if (!isShortReceptor && hasTerm(combined, markerLower)) {
       biomarkerMatchRaw += 10;
     } else if (markerLower.includes("positive")) {
       const base = escapeRegExp(markerLower.replace(/\s*positive/, "").trim());
@@ -548,22 +615,27 @@ async function scoreTrial(
 
   // 5. Prior Treatments
   let priorTreatmentsMatch = 0;
+  const crit = splitCriteria(trial.eligibilityText || "");
   for (const treatment of profile.priorTreatments) {
-    if (textContains(trial.eligibilityText || combined, treatment)) {
+    if (hasTerm(crit.exclusion, treatment)) continue;
+    if (hasTerm(`${trial.title} ${trial.summary} ${crit.inclusion}`, treatment)) {
       priorTreatmentsMatch += 4;
     }
   }
 
   // 6. Stage Match
-  const stageMatch = (profile.stage && textContains(combined, profile.stage)) ? 7 : 0;
+  const stageMatch =
+    profile.stage && new RegExp(`\\bstage\\s+${escapeRegExp(profile.stage.toLowerCase())}(?![a-z0-9])`).test(combined)
+      ? 7
+      : 0;
 
   // 7. Phase Bonus
   let phaseBonus = 0;
   const phaseRank = parsePhaseRank(trial.phase);
-  if (phaseRank >= 4) phaseBonus = 12;
-  else if (phaseRank === 3) phaseBonus = 10;
-  else if (phaseRank === 2) phaseBonus = 8;
-  else if (phaseRank === 1) phaseBonus = 4;
+  if (phaseRank >= 4) phaseBonus = 6;
+  else if (phaseRank === 3) phaseBonus = 5;
+  else if (phaseRank === 2) phaseBonus = 4;
+  else if (phaseRank === 1) phaseBonus = 2;
 
   // 8. Location Match & Proximity
   let locationMatch = 0;
@@ -613,9 +685,11 @@ async function scoreTrial(
   if (profile.sex !== "unknown") {
     if (profile.sex === "female" && /\bfemale\b/i.test(combined)) sexMatch += 4;
     if (profile.sex === "male" && /\bmale\b/i.test(combined)) sexMatch += 4;
-    if (profile.sex === "female" && /\bmale only\b/i.test(combined)) sexMatch -= 20;
-    if (profile.sex === "male" && /\bfemale only\b/i.test(combined)) sexMatch -= 20;
+    if (isSexExcluded(trial, profile, combined)) sexMatch -= 20;
   }
+
+  // 9b. Structured age limits (hard gate)
+  const ageMatch = ageOutOfRange(trial, profile) ? -25 : 0;
 
   // 10. Biomarker Logic Gates Check
   const biomarkerGates = evaluateBiomarkerGates(trial.eligibilityText || combined, profile);
@@ -638,11 +712,18 @@ async function scoreTrial(
     }
   }
 
+  // 11b. Lexical relevance (BM25 vs title) and patient terms in exclusion criteria
+  const { textRelevance, exclusionOverlap } = lexicalScores(
+    query,
+    trial.title,
+    splitCriteria(trial.eligibilityText || "").exclusion
+  );
+
   // 12. Penalties
   const biomarkerPenalties =
     hasContradictoryBiomarkers(combined, profile) +
     biomarkerGatePenalty(biomarkerGates, profile);
-  const stagePenalties = hasContradictoryStageContext(combined, profile);
+  const stagePenalties = hasContradictoryStageContext(combined, profile, trial.eligibilityText);
 
   const rawTotal = 
     baseline + 
@@ -654,7 +735,10 @@ async function scoreTrial(
     phaseBonus + 
     locationMatch + 
     sexMatch +
-    biomarkerGatesMatch - 
+    ageMatch +
+    textRelevance +
+    biomarkerGatesMatch -
+    exclusionOverlap - 
     biomarkerPenalties - 
     stagePenalties -
     washoutPenalties;
@@ -682,6 +766,9 @@ async function scoreTrial(
       phaseBonus,
       locationMatch,
       sexMatch,
+      ageMatch,
+      textRelevance: Math.round(textRelevance),
+      exclusionOverlap: Math.round(exclusionOverlap),
       biomarkerPenalties,
       stagePenalties,
       washoutPenalties,
@@ -717,11 +804,10 @@ export function selectDisplayedTrials(ranked: MatchedTrial[]): MatchedTrial[] {
 
 export function rankMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
   const ranked = [...trials].sort((a, b) => {
-    const phaseDiff =
-      (isPhaseTwoOrAbove(b.phase) ? 1 : 0) -
-      (isPhaseTwoOrAbove(a.phase) ? 1 : 0);
-    if (phaseDiff !== 0) return phaseDiff;
-    return b.matchScore - a.matchScore;
+    // Phase already contributes phaseBonus to the score; sorting phase-first
+    // buried a 95-point phase 1 trial under a 46-point phase 2 one.
+    if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+    return (isPhaseTwoOrAbove(b.phase) ? 1 : 0) - (isPhaseTwoOrAbove(a.phase) ? 1 : 0);
   });
 
   return selectDisplayedTrials(ranked);
@@ -729,8 +815,10 @@ export function rankMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
 
 export async function scoreAllRegistryTrials(
   trials: RegistryTrial[],
-  profile: PatientProfile
+  profile: PatientProfile,
+  queryText: string = profileQueryText(profile)
 ): Promise<MatchedTrial[]> {
+  const query = new Set(tokenize(queryText));
   const scoredPromises = trials.map(async (trial) => {
     const {
       score,
@@ -741,7 +829,7 @@ export async function scoreAllRegistryTrials(
       criteriaEvaluations,
       reasonsMatched,
       reasonsToConfirm,
-    } = await scoreTrial(trial, profile);
+    } = await scoreTrial(trial, profile, query);
 
     return {
       registry: trial.registry,
@@ -769,8 +857,9 @@ export async function scoreAllRegistryTrials(
 
 export async function scoreAndRankTrials(
   trials: RegistryTrial[],
-  profile: PatientProfile
+  profile: PatientProfile,
+  queryText?: string
 ): Promise<MatchedTrial[]> {
-  const scored = await scoreAllRegistryTrials(trials, profile);
+  const scored = await scoreAllRegistryTrials(trials, profile, queryText);
   return rankMatchedTrials(scored);
 }

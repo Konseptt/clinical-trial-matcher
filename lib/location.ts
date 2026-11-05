@@ -246,6 +246,17 @@ function normalizeQueryKey(
     .trim();
 }
 
+// Network lookups go in a bounded insertion-ordered map so caller-chosen
+// locations cannot grow process memory without limit (oldest evicted first).
+const NETWORK_CACHE_MAX = 500;
+const NETWORK_CACHE = new Map<string, GeoCoords | null>();
+function remember(key: string, value: GeoCoords | null): void {
+  if (NETWORK_CACHE.size >= NETWORK_CACHE_MAX) {
+    NETWORK_CACHE.delete(NETWORK_CACHE.keys().next().value!);
+  }
+  NETWORK_CACHE.set(key, value);
+}
+
 export async function geocodeLocation(
   city: string | null,
   state: string | null,
@@ -258,10 +269,15 @@ export async function geocodeLocation(
   if (queryKey in LOCATION_CACHE) {
     return LOCATION_CACHE[queryKey];
   }
+  if (NETWORK_CACHE.has(queryKey)) {
+    return NETWORK_CACHE.get(queryKey)!;
+  }
 
   const stateNorm = state ? (US_STATE_NAMES[state.toLowerCase()] ?? state) : null;
   const parts = [city, stateNorm, country].filter(Boolean);
-  while (parts.length > 1) {
+  // Stop at "state, country": a bare country centroid (e.g. Kansas for "United
+  // States") produced fake ~1,400 mi distances for real city sites.
+  while (parts.length > 2) {
     parts.shift();
     const fallbackKey = parts.join(", ").toLowerCase();
     if (fallbackKey in LOCATION_CACHE) {
@@ -291,10 +307,11 @@ export async function geocodeLocation(
           Accept: "application/json",
         },
         next: { revalidate: 86400 },
+        signal: AbortSignal.timeout(5000),
       });
 
       if (!response.ok) {
-        LOCATION_CACHE[queryKey] = null;
+        remember(queryKey, null);
         return null;
       }
 
@@ -307,14 +324,14 @@ export async function geocodeLocation(
           lat: parseFloat(data[0].lat),
           lon: parseFloat(data[0].lon),
         };
-        LOCATION_CACHE[queryKey] = coords;
+        remember(queryKey, coords);
         return coords;
       }
 
-      LOCATION_CACHE[queryKey] = null;
+      remember(queryKey, null);
       return null;
     } catch {
-      LOCATION_CACHE[queryKey] = null;
+      remember(queryKey, null);
       return null;
     } finally {
       inFlightRequests.delete(queryKey);

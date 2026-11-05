@@ -70,7 +70,15 @@ function normalizeBiomarkers(rawText: string): string[] {
   ];
 
   for (const marker of extras) {
-    if (marker.re.test(lower)) markers.push(marker.id);
+    const m = marker.re.exec(lower);
+    if (!m) continue;
+    const before = lower.slice(Math.max(0, m.index - 20), m.index);
+    const after = lower.slice(m.index + m[0].length, m.index + m[0].length + 30);
+    // "ALK negative", "KRAS wild-type", "no EGFR mutation", "EGFR not detected"
+    const negative =
+      /^[\s:-]*(?:negative|neg\b|wild[\s-]?type|wt\b|not\s+detected|unmutated|absent)/.test(after) ||
+      /\b(?:no|negative\s+for|without)\s+(?:\w+\s+)?$/.test(before);
+    markers.push(negative ? `${marker.id} negative` : marker.id);
   }
 
   return [...new Set(markers)];
@@ -311,18 +319,26 @@ export function extractPatientProfile(rawText: string): PatientProfile {
 
   const normCondition = normalizeCondition(normalizedText);
 
+  // Patient age only: "45-year-old", "45 yo", "aged 45", "45M". A bare
+  // "3 years ago" / "10-year history" is disease duration, not age.
   const ageMatch =
-    text.match(/\b(\d{1,3})[\s-]*(?:year|yr|y\.?o|years old)\b/) ||
-    text.match(/\b(?:i(?:'m| am)|age[d:]?)\s*(\d{1,3})\b/);
+    text.match(/\b(\d{1,3})[\s-]*(?:years?|yrs?)[\s-]*old\b/) ||
+    text.match(/\b(\d{1,3})\s*(?:y\.?o\.?|y\/o)(?![a-z])/) ||
+    text.match(/\b(?:i(?:'m| am)|age[d:]?|aged)\s*(\d{1,3})\b/) ||
+    text.match(/\b(\d{1,3})\s*(?:m|f)\b(?!\/)/);
   const age = ageMatch ? Math.min(parseInt(ageMatch[1], 10), 120) : null;
 
   let sex: PatientProfile["sex"] = "unknown";
-  if (/\b(male|man|m\/f.*\bm\b|he\/him|his\b)/.test(text)) sex = "male";
-  else if (/\b(female|woman|f\/m|she\/her|hers\b)/.test(text)) sex = "female";
+  // Earliest explicit cue wins; every alternative is word-bounded so
+  // "managed"/"many" no longer read as male.
+  const maleAt = text.search(/\b(?:male|man|men|gentleman|he|him|his|\d{1,3}\s*m)\b/);
+  const femaleAt = text.search(/\b(?:female|woman|women|lady|she|her|hers|\d{1,3}\s*f)\b/);
+  if (maleAt >= 0 && (femaleAt < 0 || maleAt < femaleAt)) sex = "male";
+  else if (femaleAt >= 0) sex = "female";
 
   const stagePatterns = [
     /\bstage\s+(i{1,3}[abc]?|iv[abc]?|0|[1-4][abc]?)\b/i,
-    /\b(staging|classified as)\s+(i{1,3}[abc]?|iv[abc]?)\b/i,
+    /\b(?:staging|classified as)\s+(i{1,3}[abc]?|iv[abc]?)\b/i,
   ];
   const stage = findFirstMatch(normalizedText, stagePatterns);
 

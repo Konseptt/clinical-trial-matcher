@@ -144,3 +144,30 @@ describe("selectDisplayedTrials", () => {
     expect(registries.has("ISRCTN")).toBe(true);
   });
 });
+
+describe("source accuracy regressions", () => {
+  it("ISRCTN locations come from trial centres, not sponsor/contact addresses", () => {
+    const xml = `<allTrials><fullTrial><trial><isrctn>12345678</isrctn><title>T</title>
+      <recruitmentStart>2020-01-01T00:00:00</recruitmentStart><recruitmentEnd>2099-01-01T00:00:00</recruitmentEnd>
+      <recruitmentStatusOverride/>
+      <recruitmentCountries><country>Portugal</country></recruitmentCountries>
+      <trialCentres><trialCentre id="x"><name>Hospital de Braga</name><city>Braga</city><state/><country>Portugal</country></trialCentre></trialCentres>
+      </trial><contact><country>United Kingdom</country></contact><sponsor><country>Germany</country></sponsor></fullTrial></allTrials>`;
+    const [t] = parseLegacyXml(xml);
+    expect(t.status).toBe("Recruiting");
+    expect(t.locations).toEqual([{ facility: "Hospital de Braga", city: "Braga", state: "", country: "Portugal" }]);
+  });
+
+  it("ISRCTN status override beats recruitment dates", () => {
+    const xml = `<fullTrial><isrctn>1</isrctn><title>T</title>
+      <recruitmentStart>2020-01-01</recruitmentStart><recruitmentEnd>2099-01-01</recruitmentEnd>
+      <recruitmentStatusOverride>Stopped</recruitmentStatusOverride></fullTrial>`;
+    expect(parseLegacyXml(xml)[0].status).toBe("Stopped");
+  });
+
+  it("dedupes WHO copies of EudraCT and NCT records across registries", async () => {
+    const { canonicalTrialId } = await import("@/lib/registries");
+    expect(canonicalTrialId("EUCTR2009-012345-12-GB")).toBe(canonicalTrialId("2009-012345-12"));
+    expect(canonicalTrialId("nct01234567")).toBe("NCT01234567");
+  });
+});

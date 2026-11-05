@@ -13,13 +13,25 @@ import type { PatientProfile } from "@/lib/types";
 
 export type { RegistryTrial, RegistryQueryResult, RegistrySource } from "./types";
 
+/**
+ * Registry-independent trial key. WHO ICTRP re-publishes NCT/ISRCTN/EudraCT
+ * records under its own source label (EudraCT as "EUCTR2009-012345-12-GB"),
+ * so keying on registry+id never collapses those copies.
+ */
+export function canonicalTrialId(trialId: string): string {
+  const id = trialId.trim().toUpperCase();
+  const eudract = id.match(/(\d{4}-\d{6}-\d{2})/);
+  if (eudract) return eudract[1];
+  return id;
+}
+
 function dedupeTrials(trials: RegistryTrial[]): RegistryTrial[] {
   const seenIds = new Set<string>();
   const seenTitles = new Set<string>();
   const result: RegistryTrial[] = [];
 
   for (const trial of trials) {
-    const idKey = `${trial.registry}:${trial.trialId}`.toLowerCase();
+    const idKey = canonicalTrialId(trial.trialId);
     // Match on the full normalized title. A 60-char prefix collapses distinct
     // trials that share a boilerplate opening ("A Phase 3 Study of ...").
     const titleKey = trial.title.toLowerCase().replace(/\s+/g, " ").trim();

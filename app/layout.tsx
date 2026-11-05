@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import Link from "next/link";
 import { Figtree, Fira_Code, Fraunces } from "next/font/google";
-import { auth, signOut } from "@/auth";
+import AuthNav from "@/components/AuthNav";
 import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -25,6 +25,7 @@ const firaCode = Fira_Code({
   weight: ["400", "500"],
   variable: "--font-fira-code",
   display: "swap",
+  preload: false, // only small IDs use it; keep it off the critical path
 });
 
 export const metadata: Metadata = {
@@ -45,12 +46,19 @@ export const metadata: Metadata = {
     url: SITE_URL,
     siteName: "Clinical Trial Matcher",
     type: "website",
+    locale: "en_US",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "Clinical Trial Matcher",
+    description:
+      "Search ClinicalTrials.gov, EU, WHO, and ISRCTN registries with your clinical notes. Estimates only.",
+  },
+  robots: { index: true, follow: true, "max-snippet": -1, "max-image-preview": "large" },
+  keywords: ["clinical trials", "clinical trial search", "recruiting studies", "trial eligibility", "ClinicalTrials.gov", "EU clinical trials register", "WHO ICTRP", "ISRCTN"],
 };
 
-async function Masthead() {
-  const session = await auth();
-
+function Masthead() {
   return (
     <header className="mb-8 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
       <Link href="/" className="font-display text-lg font-semibold text-foreground">
@@ -63,16 +71,7 @@ async function Masthead() {
         <Link href="/conditions" className="font-body text-sm text-faint hover:text-foreground">
           Conditions
         </Link>
-        <Link href={session?.user ? "/profile" : "/sign-in"} className="font-body text-sm text-primary hover:text-foreground">
-          {session?.user ? "Profile" : "Sign in"}
-        </Link>
-        {session?.user && (
-          <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
-            <button type="submit" className="font-body text-sm text-primary underline underline-offset-2 hover:text-foreground">
-              Log out
-            </button>
-          </form>
-        )}
+        <AuthNav />
       </nav>
     </header>
   );
@@ -91,7 +90,7 @@ export default function RootLayout({
       <body>
         <Script
           id="microsoft-clarity"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
           dangerouslySetInnerHTML={{
             __html: `(function(c,l,a,r,i,t,y){
         c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -106,7 +105,7 @@ export default function RootLayout({
 
         <div className="page-wrap py-8 md:py-10">
           <Masthead />
-          <main id="main" className="w-full">{children}</main>
+          <main id="main" className="w-full" data-clarity-mask="True">{children}</main>
         </div>
 
         <footer>

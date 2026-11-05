@@ -4,8 +4,15 @@ import { notFound } from "next/navigation";
 import { excerptCriteria } from "@/lib/criteria-excerpt";
 import { formatTrialStatus } from "@/lib/format";
 import { fetchPublicStudy, isNctId } from "@/lib/public-studies";
+import { absoluteUrl } from "@/lib/site";
+import { breadcrumbs, jsonLdHtml } from "@/lib/structured-data";
 
 export const revalidate = 86400;
+
+// Empty list = render each trial on first request, then serve it from the ISR cache.
+export async function generateStaticParams() {
+  return [];
+}
 
 export async function generateMetadata({
   params,
@@ -17,10 +24,15 @@ export async function generateMetadata({
   const study = await fetchPublicStudy(nctId);
   if (!study) return { title: nctId.toUpperCase() };
 
+  const status = formatTrialStatus(study.status);
+  const summary = study.summary.replace(/\s+/g, " ").trim();
+  const phase = /phase\s*\d/i.test(study.phase) ? ` ${study.phase}` : "";
+  const description = `${status}${phase} study (${study.nctId}). ${summary}`.slice(0, 157).replace(/\s+\S*$/, "") + "…";
   return {
     title: study.title,
-    description: `${study.nctId} is ${study.status}. Criteria below are quoted from ClinicalTrials.gov. This page does not assess eligibility.`,
+    description,
     alternates: { canonical: `/trials/${study.nctId}` },
+    openGraph: { title: study.title, description, type: "article", url: `/trials/${study.nctId}` },
   };
 }
 
@@ -63,7 +75,11 @@ export default async function TrialPage({
     "@type": "MedicalTrial",
     name: study.title,
     identifier: study.nctId,
-    url: study.url,
+    url: absoluteUrl(`/trials/${study.nctId}`),
+    sameAs: study.url,
+    phase: study.phase,
+    status: formatTrialStatus(study.status),
+    ...(study.sponsor ? { sponsor: { "@type": "Organization", name: study.sponsor } } : {}),
     description:
       "Quoted from the public registry record. This page does not assess who can enroll.",
   };
@@ -72,9 +88,13 @@ export default async function TrialPage({
     <article className="max-w-3xl">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
-        }}
+        dangerouslySetInnerHTML={jsonLdHtml({
+          "@context": "https://schema.org",
+          "@graph": [
+            { ...jsonLd, "@context": undefined },
+            breadcrumbs([["Home", "/"], ["Conditions", "/conditions"], [study.nctId, `/trials/${study.nctId}`]]),
+          ],
+        })}
       />
       <p className="font-mono text-xs text-faint">{study.nctId}</p>
       <h1 className="section-title mt-2">{study.title}</h1>
