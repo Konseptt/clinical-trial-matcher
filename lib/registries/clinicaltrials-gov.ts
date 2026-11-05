@@ -1,6 +1,7 @@
 import { capTrialSummary } from "@/lib/format";
 import type { ClinicalTrialsGovResponse, ClinicalTrialsGovStudy } from "@/lib/types";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
+import { REGISTRY_TIMEOUT_MS } from "./types";
 
 const API_BASE = "https://clinicaltrials.gov/api/v2/studies";
 
@@ -77,7 +78,8 @@ export async function queryClinicalTrialsGov(
 
   const response = await fetch(`${API_BASE}?${searchParams.toString()}`, {
     headers: { Accept: "application/json" },
-    next: { revalidate: 0 },
+    next: { revalidate: 900 },
+    signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
   });
 
   if (!response.ok) {

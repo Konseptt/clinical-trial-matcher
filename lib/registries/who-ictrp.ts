@@ -1,4 +1,5 @@
 import type { RegistryQueryResult, RegistrySearchParams } from "./types";
+import { REGISTRY_TIMEOUT_MS } from "./types";
 import {
   WHO_PORTAL_BASE,
   buildWhoSearchBody,
@@ -36,6 +37,8 @@ async function postWhoSearch(
       Accept: "text/html,application/xhtml+xml",
     },
     next: { revalidate: 0 },
+    redirect: "manual",
+    signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
   });
 
   if (!session.ok) {
@@ -63,7 +66,14 @@ async function postWhoSearch(
     },
     body: body.toString(),
     next: { revalidate: 0 },
+    redirect: "manual",
+    signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
   });
+
+  // WHO answers bot POSTs with 302 → /NoAccess.aspx; following it hangs ~240s then 504s.
+  if (!response.ok) {
+    throw new Error("WHO_ICTRP_BROWSER_REQUIRED");
+  }
 
   const resultHtml = await response.text();
   if (resultHtml.includes("NoAccess.aspx")) {
@@ -84,17 +94,13 @@ export async function queryWhoIctrp(
       trials,
     };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "WHO ICTRP search unavailable";
-
+    console.warn("WHO ICTRP server search failed:", error instanceof Error ? error.message : error);
     return {
       registry: "WHO ICTRP",
       queryTerms: params.terms,
       trials: [],
-      error:
-        message === "WHO_ICTRP_BROWSER_REQUIRED"
-          ? "WHO_ICTRP_BROWSER_REQUIRED"
-          : message,
+      // Any server-side failure (bot block, timeout, 5xx) → let the browser retry.
+      error: "WHO_ICTRP_BROWSER_REQUIRED",
     };
   }
 }

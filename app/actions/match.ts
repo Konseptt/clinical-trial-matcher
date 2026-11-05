@@ -19,12 +19,13 @@ import type {
   SimplifiedTrialGuide,
 } from "@/lib/types";
 import { boundedText, validatePatientProfile } from "@/lib/security";
+import { canonicalTrialId } from "@/lib/registries";
 
 function dedupeMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
   const byKey = new Map<string, MatchedTrial>();
 
   for (const trial of trials) {
-    const key = `${trial.registry}:${trial.trialId}`.toLowerCase();
+    const key = canonicalTrialId(trial.trialId);
     const existing = byKey.get(key);
     if (!existing || trial.matchScore > existing.matchScore) {
       byKey.set(key, trial);
@@ -118,7 +119,7 @@ export async function integrateWhoTrialsAction(
       summary.registry === "WHO ICTRP"
         ? {
             ...summary,
-            trialCount: whoTrials.length,
+            trialCount: filtered.length,
             error: undefined,
           }
         : summary

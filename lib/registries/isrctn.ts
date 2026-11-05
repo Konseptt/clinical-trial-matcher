@@ -1,5 +1,6 @@
 import { capTrialSummary, normalizeTrialSummary } from "@/lib/format";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
+import { REGISTRY_TIMEOUT_MS } from "./types";
 
 const LEGACY_XML =
   "https://www.isrctn.com/api/query/format/default";
@@ -41,13 +42,29 @@ export function parseLegacyXml(xml: string): RegistryTrial[] {
       : hypothesis.trim() || "ISRCTN registered trial.";
     const summary = capTrialSummary(normalizeTrialSummary(rawSummary));
 
-    const countriesMatches = [...block.matchAll(/<country>([^<]+)/g)];
-    const locations = countriesMatches.map((m) => ({
-      facility: "Recruitment Site",
-      city: "",
-      state: "",
-      country: m[1].trim(),
-    }));
+    // Only real sites: a bare <country> regex also picks up sponsor/contact addresses.
+    const tag = (src: string, name: string) =>
+      src.match(new RegExp(`<${name}>([^<]*)</${name}>`))?.[1]?.trim() ?? "";
+    const centres = [...block.matchAll(/<trialCentre\b[^>]*>([\s\S]*?)<\/trialCentre>/g)];
+    const recruitmentCountries =
+      block.match(/<recruitmentCountries>([\s\S]*?)<\/recruitmentCountries>/)?.[1] ?? "";
+    const locations = centres.length
+      ? centres.map((m) => ({
+          facility: tag(m[1], "name") || "Recruitment Site",
+          city: tag(m[1], "city"),
+          state: tag(m[1], "state"),
+          country: tag(m[1], "country"),
+        }))
+      : [...recruitmentCountries.matchAll(/<country>([^<]+)/g)].map((m) => ({
+          facility: "Recruitment Site",
+          city: "",
+          state: "",
+          country: m[1].trim(),
+        }));
+
+    // Registry override (e.g. stopped/suspended) beats date-derived status.
+    const override = block.match(/<recruitmentStatusOverride>([^<]+)</)?.[1]?.trim();
+    if (override) status = override;
 
     if (!id || !title) continue;
 
@@ -78,7 +95,8 @@ async function queryLegacyApi(
   const url = `${LEGACY_XML}?q=${encodeURIComponent(cleanCondition)}&limit=15`;
   const response = await fetch(url, {
     headers: { Accept: "application/xml,text/xml" },
-    next: { revalidate: 0 },
+    next: { revalidate: 900 },
+    signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -97,7 +115,8 @@ async function verifyIsrctnReachable(
     `${TRACKER_URL}?q=${encodeURIComponent(cleanCondition)}`,
     {
       headers: { Accept: "application/json" },
-      next: { revalidate: 0 },
+      next: { revalidate: 900 },
+    signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
     }
   );
 

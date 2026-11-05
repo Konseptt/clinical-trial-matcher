@@ -1,6 +1,9 @@
 import type { PatientLocation, PatientProfile } from "@/lib/types";
 import { normalizeCondition } from "@/lib/normalization";
 
+/** Per-request cap so one slow registry cannot stall the whole match. */
+export const REGISTRY_TIMEOUT_MS = 8000;
+
 export type RegistrySource =
   | "ClinicalTrials.gov"
   | "WHO ICTRP"
