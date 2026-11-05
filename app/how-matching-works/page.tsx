@@ -71,6 +71,19 @@ export default function HowMatchingWorksPage() {
         the default order by itself.
       </p>
 
+      <h2 className="subsection-title mt-10">How ranking is tested</h2>
+      <p className="mt-3 text-body-muted">
+        Ranking is checked against TREC Clinical Trials 2021, a public benchmark
+        in which clinicians judged 2,463 trials as eligible, excluded, or not
+        relevant for 75 patient descriptions. On that set the matcher places an
+        eligible study first more often than not: NDCG@10 is 0.63 and about half
+        of the top ten results are trials the clinicians judged eligible. The
+        biggest gains came from honoring registry age and sex limits, matching
+        the patient&apos;s own words to trial titles, and lowering trials whose
+        exclusion criteria name the patient&apos;s conditions or treatments.
+        A benchmark is not a guarantee for any one person.
+      </p>
+
       <h2 className="subsection-title mt-10">What stays off the index</h2>
       <p className="mt-3 text-body-muted">
         Search results live in this browser until you leave. Notes are not

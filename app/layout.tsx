@@ -35,14 +35,14 @@ export const metadata: Metadata = {
     template: "%s | Clinical Trial Matcher",
   },
   description:
-    "Search ClinicalTrials.gov, EU, WHO, and ISRCTN records and forecast when a washout line in the registry text might clear. Estimates only. The study team confirms eligibility.",
+    "Free clinical trial search. Paste your diagnosis and treatment history to find recruiting studies across ClinicalTrials.gov, the EU, WHO, and ISRCTN registries, ranked by how well you fit. No sign-up.",
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
   },
   openGraph: {
     title: "Clinical Trial Matcher",
     description:
-      "Recruiting studies from public registries, with a washout forecast from the criteria text. Estimates only.",
+      "Find recruiting clinical trials that fit your diagnosis, across four global registries. Free, no sign-up.",
     url: SITE_URL,
     siteName: "Clinical Trial Matcher",
     type: "website",
@@ -50,9 +50,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Clinical Trial Matcher",
+    title: "Clinical Trial Matcher — find trials that fit you",
     description:
-      "Search ClinicalTrials.gov, EU, WHO, and ISRCTN registries with your clinical notes. Estimates only.",
+      "Paste your notes, get recruiting trials from four registries ranked by fit. Free, no sign-up.",
   },
   robots: { index: true, follow: true, "max-snippet": -1, "max-image-preview": "large" },
   keywords: ["clinical trials", "clinical trial search", "recruiting studies", "trial eligibility", "ClinicalTrials.gov", "EU clinical trials register", "WHO ICTRP", "ISRCTN"],

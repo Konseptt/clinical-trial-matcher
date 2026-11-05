@@ -3,9 +3,9 @@ import Link from "next/link";
 import { listKnownConditions } from "@/lib/normalization";
 
 export const metadata: Metadata = {
-  title: "Conditions",
+  title: "Clinical Trials by Condition",
   description:
-    "Conditions Clinical Trial Matcher can name in a registry query, with a washout check against recruiting studies.",
+    "Browse recruiting clinical trials by condition — cancers, multiple sclerosis, Alzheimer's, ALS and more — from ClinicalTrials.gov, updated daily.",
   alternates: { canonical: "/conditions" },
 };
 

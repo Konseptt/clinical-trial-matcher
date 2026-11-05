@@ -1,7 +1,7 @@
 # llms.txt — LLM Crawl & Usage Policy
 # https://clinicaltrial.world/llms.txt
 # Specification: https://llmstxt.org
-# Last updated: 2025
+# Last updated: 2026-11-05
 
 # Clinical Trial Matcher
 
@@ -17,6 +17,13 @@ global registries and matches them to a user-supplied condition and profile.
 It also parses trial eligibility criteria to estimate when a washout period
 from a prior therapy would clear, enabling patients to know when they might
 qualify for a trial.
+
+## Ranking
+
+Recruiting studies are scored against the user's diagnosis, biomarkers,
+treatments, age, sex, and location. Registry age/sex limits are hard gates;
+patient terms found in exclusion criteria lower a study. Evaluated on TREC
+Clinical Trials 2021 (75 topics, 2,463 judged trials): NDCG@10 0.63.
 
 ## Key Pages
 

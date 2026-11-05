@@ -24,8 +24,8 @@ export async function generateMetadata({
   if (!condition) return { title: "Condition" };
 
   return {
-    title: `${condition.canonicalName} recruiting studies and washout check`,
-    description: `Recruiting and not-yet-recruiting ${condition.canonicalName} studies from ClinicalTrials.gov, plus the query this matcher sends. The study team confirms eligibility.`,
+    title: `${condition.canonicalName} Clinical Trials — Recruiting Studies`,
+    description: `Browse recruiting ${condition.canonicalName} clinical trials from ClinicalTrials.gov, updated daily. Paste your notes to rank ${condition.canonicalName} studies across four registries by how well you fit. Free.`,
     alternates: { canonical: `/conditions/${condition.slug}` },
     openGraph: { url: `/conditions/${condition.slug}`, type: "website" },
   };
@@ -86,8 +86,19 @@ export default async function ConditionPage({
       />
       <p className="section-label">Condition</p>
       <h1 className="section-title mt-2">
-        {condition.canonicalName} recruiting studies and washout check
+        {condition.canonicalName} clinical trials
       </h1>
+      <p className="mt-4 text-body-muted">
+        Recruiting and not-yet-recruiting {condition.canonicalName} studies, refreshed
+        daily. Want them ranked for you? Paste your diagnosis, treatments, and
+        location and the matcher checks ClinicalTrials.gov, EU, WHO, and ISRCTN
+        registries for studies that fit.
+      </p>
+      <p className="mt-4">
+        <Link href="/" className="text-primary font-semibold underline underline-offset-2">
+          Match {condition.canonicalName} trials to my notes
+        </Link>
+      </p>
       <p className="section-hint mt-4">
         {countLabel} on ClinicalTrials.gov for the query below. Retrieved{" "}
         {formatWhen(snapshot.fetchedAt)}. This page does not say who can enroll.
@@ -144,6 +155,20 @@ export default async function ConditionPage({
             ))}
         </ol>
       )}
+      <nav aria-label="Other conditions" className="mt-12 border-t border-border-subtle pt-6">
+        <h2 className="subsection-title">Clinical trials for other conditions</h2>
+        <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+          {listKnownConditions()
+            .filter((c) => c.slug !== condition.slug)
+            .map((c) => (
+              <li key={c.slug}>
+                <Link href={`/conditions/${c.slug}`} className="text-primary hover:text-foreground">
+                  {c.canonicalName} trials
+                </Link>
+              </li>
+            ))}
+        </ul>
+      </nav>
     </article>
   );
 }
