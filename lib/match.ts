@@ -28,10 +28,13 @@ export async function runMatchPipelineByProfile(
 
 export async function runMatchPipeline(
   notes: string,
-  mode: AppMode = "doctor"
+  mode: AppMode = "doctor",
+  allowAi = false
 ): Promise<MatchResponse> {
+  // Paid LLM extraction only when the caller passed the auth + quota gate;
+  // otherwise the deterministic extractor (same fallback as "no API key").
   const profile =
-    mode === "patient"
+    mode === "patient" && allowAi
       ? await extractPatientProfilePatientMode(notes)
       : extractPatientProfile(notes);
 
