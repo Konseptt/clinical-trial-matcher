@@ -75,6 +75,9 @@ export function forecastTrialEligibility(
   if (bd.sexMatch < 0) {
     hardBlockers.push("Trial restricts enrollment by sex");
   }
+  if ((bd.ageMatch ?? 0) < 0) {
+    hardBlockers.push("Your age is outside the registry's stated age limits");
+  }
   if (
     bd.stagePenalties > 0 &&
     profile.hasMetastaticDisease === false

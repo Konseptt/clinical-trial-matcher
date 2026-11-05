@@ -1130,6 +1130,24 @@ function TrialCard({
                   {bd.sexMatch >= 0 ? `+${bd.sexMatch}` : bd.sexMatch}
                 </span>
               </div>
+              {bd.ageMatch ? (
+                <div className="flex justify-between py-1 border-b border-border-subtle/40">
+                  <span>Outside registry age limits</span>
+                  <span className="font-mono font-semibold text-destructive">{bd.ageMatch}</span>
+                </div>
+              ) : null}
+              {bd.textRelevance != null && (
+                <div className="flex justify-between py-1 border-b border-border-subtle/40">
+                  <span>Title relevance to your notes</span>
+                  <span className="font-mono text-foreground font-semibold">+{bd.textRelevance}</span>
+                </div>
+              )}
+              {bd.exclusionOverlap ? (
+                <div className="flex justify-between py-1 border-b border-border-subtle/40">
+                  <span>Your terms in exclusion criteria</span>
+                  <span className="font-mono font-semibold text-destructive">-{bd.exclusionOverlap}</span>
+                </div>
+              ) : null}
             </div>
           </div>
         )}

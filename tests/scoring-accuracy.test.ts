@@ -80,3 +80,11 @@ describe("scoring accuracy regressions", () => {
     expect(ranked[0].trialId).toBe("strong");
   });
 });
+
+describe("forecast uses structured age gate", () => {
+  it("out-of-range age is a hard blocker", async () => {
+    const { forecastTrialEligibility: forecastEligibility } = await import("@/lib/eligibility-forecast");
+    const [m] = await scoreAllRegistryTrials([trial({ minAgeYears: 18, maxAgeYears: 65 })], profile({ age: 80 }));
+    expect(forecastEligibility(m, profile({ age: 80 })).blockers.join(" ")).toMatch(/age/i);
+  });
+});
