@@ -88,11 +88,6 @@ export default function Home() {
           global trial registries at once, rank recruiting studies by how well
           you fit, and show when you could become eligible.
         </p>
-        <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-foreground">
-          <li>Free, no sign-up</li>
-          <li>ClinicalTrials.gov · EU · WHO · ISRCTN</li>
-          <li>Age, sex, biomarker and washout checks</li>
-        </ul>
       </header>
 
       <Suspense fallback={<p className="py-6 text-faint font-body">Loading</p>}>
