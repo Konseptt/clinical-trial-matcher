@@ -407,8 +407,12 @@ export function extractPatientProfile(rawText: string): PatientProfile {
   let sex: PatientProfile["sex"] = "unknown";
   // Earliest explicit cue wins; every alternative is word-bounded so
   // "managed"/"many" no longer read as male.
-  const maleAt = text.search(/\b(?:male|man|men|gentleman|he|him|his|\d{1,3}\s*m)\b/);
-  const femaleAt = text.search(/\b(?:female|woman|women|lady|she|her|hers|\d{1,3}\s*f)\b/);
+  const maleAt = text.search(
+    /\b(?:male|man|men|gentleman|he|him|his|boy|\d{1,3}\s*m|\d{1,3}\s*(?:yo|y\/o|year[\s-]old)\s*m)\b/
+  );
+  const femaleAt = text.search(
+    /\b(?:female|woman|women|lady|she|her|hers|mrs|girl|pregnant|postmenopausal|premenopausal|perimenopausal|\d{1,3}\s*f|\d{1,3}\s*(?:yo|y\/o|year[\s-]old)\s*f)\b/
+  );
   if (maleAt >= 0 && (femaleAt < 0 || maleAt < femaleAt)) sex = "male";
   else if (femaleAt >= 0) sex = "female";
 

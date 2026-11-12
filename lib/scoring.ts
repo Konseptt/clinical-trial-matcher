@@ -585,10 +585,23 @@ export function evaluateCriteria(
       status: sexMismatch ? "not-met" : "met",
     });
   } else {
+    // Patient sex not stated. A trial open to all sexes is met either way; only
+    // a single-sex trial (structured field or "women only" text) needs it.
+    const restricted =
+      trial.sex && trial.sex !== "all"
+        ? trial.sex
+        : /\b(?:females?|women)\s+only\b/i.test(combined)
+          ? "female"
+          : /\b(?:males?|men)\s+only\b/i.test(combined)
+            ? "male"
+            : null;
     criteriaEvaluations.push({
       name: "Sex requirement",
       category: "sex",
-      status: "unknown",
+      status: restricted ? "unknown" : "met",
+      evidence: restricted
+        ? `Study enrolls ${restricted} participants only; add sex to confirm`
+        : "Study is open to all sexes",
     });
   }
 

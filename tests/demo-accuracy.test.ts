@@ -321,3 +321,23 @@ describe("spelled-out receptor names", () => {
     expect(b).toEqual(expect.arrayContaining(["HER2 positive", "ER negative", "PR positive"]));
   });
 });
+
+describe("sex requirement", () => {
+  it("unknown patient sex is met when the trial is open to all sexes", async () => {
+    const p = extractPatientProfile("58, live near Boston, stage III HER2-positive breast cancer.");
+    expect(p.sex).toBe("unknown");
+    const [open] = await scoreAllRegistryTrials([trial({ sex: "all" })], p);
+    expect(open.criteriaEvaluations?.find((c) => c.category === "sex")?.status).toBe("met");
+    const [women] = await scoreAllRegistryTrials([trial({ sex: "female" })], p);
+    expect(women.criteriaEvaluations?.find((c) => c.category === "sex")?.status).toBe("unknown");
+  });
+
+  it.each([
+    ["Postmenopausal patient, 61, ER positive breast cancer.", "female"],
+    ["Mrs. Lee, 47, breast cancer.", "female"],
+    ["62 yo M with prostate cancer.", "male"],
+    ["34 yo with relapsing MS, MRI shows new lesions.", "unknown"],
+  ])("%s -> %s", (note, sex) => {
+    expect(extractPatientProfile(note).sex).toBe(sex);
+  });
+});
