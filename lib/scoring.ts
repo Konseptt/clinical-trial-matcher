@@ -376,6 +376,19 @@ function sameCountryBonus(trial: RegistryTrial, profile: PatientProfile): number
   return trial.locations.some((l) => l.country?.toLowerCase() === country) ? 4 : 0;
 }
 
+const ROMAN_STAGE: Record<string, string> = { "0": "0", "1": "i", "2": "ii", "3": "iii", "4": "iv" };
+
+/** "stage 2", "stage II", "Stage IIb" all match a profile stage of "2" or "II". */
+export function stagePattern(stage: string): RegExp {
+  const s = stage.toLowerCase().replace(/^stage\s+/, "").trim();
+  const m = s.match(/^([0-4])([abc])?$/) ?? null;
+  const roman = m ? ROMAN_STAGE[m[1]] + (m[2] ?? "") : s;
+  const arabic = Object.entries(ROMAN_STAGE).find(([, r]) => roman.replace(/[abc]$/, "") === r)?.[0];
+  const sub = roman.match(/[abc]$/)?.[0] ?? "";
+  const forms = [...new Set([roman, arabic ? arabic + sub : roman])].map(escapeRegExp);
+  return new RegExp(`\\bstage\\s+(?:${forms.join("|")})(?![a-z0-9])`, "i");
+}
+
 export function hasContradictoryStageContext(
   combined: string,
   profile: Pick<PatientProfile, "hasMetastaticDisease">,
@@ -731,10 +744,7 @@ async function scoreTrial(
   }
 
   // 6. Stage Match
-  const stageMatch =
-    profile.stage && new RegExp(`\\bstage\\s+${escapeRegExp(profile.stage.toLowerCase())}(?![a-z0-9])`).test(combined)
-      ? 7
-      : 0;
+  const stageMatch = profile.stage && stagePattern(profile.stage).test(combined) ? 7 : 0;
 
   // 7. Phase Bonus
   let phaseBonus = 0;
