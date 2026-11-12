@@ -65,7 +65,8 @@
   }
 
   .page-wrap {
-    @apply w-full max-w-[72rem] mx-auto px-4 sm:px-6 lg:px-8;
+    /* Fluid: fills the viewport on every size; gutters scale with width. */
+    @apply w-full mx-auto px-[clamp(1rem,4vw,5rem)];
   }
 
   .section-label {

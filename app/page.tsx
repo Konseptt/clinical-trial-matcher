@@ -79,7 +79,7 @@ export default function Home() {
           __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
         }}
       />
-      <header className="mb-10 w-full max-w-2xl">
+      <header className="mb-10 w-full max-w-3xl">
         <h1 className="font-display text-3xl sm:text-4xl font-semibold text-foreground text-pretty leading-tight">
           Find clinical trials that fit you
         </h1>
@@ -94,11 +94,11 @@ export default function Home() {
         <HomeClient />
       </Suspense>
 
-      <section className="mt-16 max-w-2xl border-t border-border-subtle pt-10" aria-labelledby="method-heading">
+      <section className="mt-16 border-t border-border-subtle pt-10" aria-labelledby="method-heading">
         <h2 id="method-heading" className="section-title">
           Browse clinical trials by condition
         </h2>
-        <p className="section-hint mt-3">
+        <p className="section-hint mt-3 max-w-2xl">
           A personalized list is an estimate from registry criteria and the
           dates you enter.{" "}
           <Link href="/how-matching-works" className="text-primary underline underline-offset-2">
@@ -107,7 +107,7 @@ export default function Home() {
           is the public description of the query, the line labels, and the
           washout forecast. Your notes are not part of that page.
         </p>
-        <ul className="mt-6 columns-1 sm:columns-2 gap-x-8">
+        <ul className="mt-6 columns-1 sm:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5 gap-x-8">
           {conditions.map((condition) => (
             <li key={condition.slug} className="break-inside-avoid">
               <Link
@@ -121,9 +121,9 @@ export default function Home() {
         </ul>
       </section>
 
-      <section className="mt-16 max-w-2xl border-t border-border-subtle pt-10" aria-labelledby="faq-heading">
+      <section className="mt-16 border-t border-border-subtle pt-10" aria-labelledby="faq-heading">
         <h2 id="faq-heading" className="section-title">Frequently asked questions</h2>
-        <dl className="mt-6 space-y-6">
+        <dl className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-6">
           {FAQ.map(([q, a]) => (
             <div key={q}>
               <dt className="font-display text-lg font-semibold text-foreground">{q}</dt>

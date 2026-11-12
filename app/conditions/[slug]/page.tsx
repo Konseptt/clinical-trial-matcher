@@ -58,7 +58,7 @@ export default async function ConditionPage({
       : `${snapshot.total.toLocaleString("en-US")} studies matched`;
 
   return (
-    <article className="max-w-3xl">
+    <article className="max-w-5xl">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={jsonLdHtml({

@@ -21,7 +21,7 @@ const jsonLd = {
 
 export default function HowMatchingWorksPage() {
   return (
-    <article className="max-w-2xl">
+    <article className="max-w-3xl">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{

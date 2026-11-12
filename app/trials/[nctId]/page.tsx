@@ -85,7 +85,7 @@ export default async function TrialPage({
   };
 
   return (
-    <article className="max-w-3xl">
+    <article className="max-w-5xl">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={jsonLdHtml({
