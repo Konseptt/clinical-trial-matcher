@@ -38,6 +38,24 @@ function asStringArray(value: unknown, max = 20): string[] {
     .slice(0, max);
 }
 
+/**
+ * Models write "Trastuzumab (Herceptin)", which never matches registry text.
+ * Drop the brand in parentheses, then prefer the rule extractor's canonical
+ * names (they also key the washout timeline) and add only names it missed.
+ */
+function mergeTreatmentNames(aiNames: string[], ruleNames: string[]): string[] {
+  const out = [...ruleNames];
+  const seen = new Set(ruleNames.map((n) => n.toLowerCase()));
+  for (const raw of aiNames) {
+    const name = raw.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+    if (name && !seen.has(name.toLowerCase())) {
+      seen.add(name.toLowerCase());
+      out.push(name);
+    }
+  }
+  return out.slice(0, 20);
+}
+
 function normalizeSex(value: unknown): PatientProfile["sex"] {
   const sex = asString(value).toLowerCase();
   if (sex === "male" || sex === "female") return sex;
@@ -60,7 +78,7 @@ function normalizeMetastatic(value: unknown): boolean | null {
   return null;
 }
 
-function coercePatientProfile(
+export function coercePatientProfile(
   parsed: unknown,
   fallback: PatientProfile
 ): PatientProfile {
@@ -95,13 +113,12 @@ function coercePatientProfile(
     recentDiseaseActivity: asString(record.recentDiseaseActivity) || fallback.recentDiseaseActivity || null,
     mriFindings: asString(record.mriFindings) || fallback.mriFindings || null,
     priorAdvancedTherapies: fallback.priorAdvancedTherapies,
-    stage: asString(record.stage) || fallback.stage,
+    // Models answer "Stage IV"; scoring and forecast expect the bare "IV".
+    stage: asString(record.stage).replace(/^stage\s+/i, "") || fallback.stage,
     biomarkers: asStringArray(record.biomarkers, 15).length
       ? asStringArray(record.biomarkers, 15)
       : fallback.biomarkers,
-    priorTreatments: asStringArray(record.priorTreatments, 20).length
-      ? asStringArray(record.priorTreatments, 20)
-      : fallback.priorTreatments,
+    priorTreatments: mergeTreatmentNames(asStringArray(record.priorTreatments, 20), fallback.priorTreatments),
     priorTreatmentsTimeline: fallback.priorTreatmentsTimeline,
     location: normalizeLocation(record.location) ?? fallback.location,
     hasMetastaticDisease:

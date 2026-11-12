@@ -124,3 +124,73 @@ describe("ranking + stage (fixes 1, 2)", () => {
     expect(ranked[0].rankScore!).toBeGreaterThan(ranked[1].rankScore!);
   });
 });
+
+describe("end dates per clause and AI merge", () => {
+  it("assigns each drug the date from its own clause, bare month = most recent past", () => {
+    const p = extractPatientProfile(
+      "I finished Herceptin and Perjeta with Taxotere in September 2026, then Enhertu stopped working in late October."
+    );
+    const by = Object.fromEntries((p.priorTreatmentsTimeline ?? []).map((t) => [t.name, t.endDate]));
+    expect(by.Trastuzumab).toBe("2026-09");
+    expect(by.Docetaxel).toBe("2026-09");
+    const now = new Date();
+    const expectYear = 10 <= now.getUTCMonth() + 1 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+    expect(by["Trastuzumab deruxtecan"]).toBe(`${expectYear}-10`);
+  });
+});
+
+describe("AI profile coercion", () => {
+  it("strips 'Stage' prefix and brand parentheses, keeps rule names and timeline", async () => {
+    const { coercePatientProfile } = await import("@/lib/extract-ai");
+    const fallback = extractPatientProfile("52F HER2-positive breast cancer. Trastuzumab completed 2026-09-20.");
+    const p = coercePatientProfile(
+      { stage: "Stage IV", priorTreatments: ["Trastuzumab (Herceptin)", "Tucatinib (Tukysa)", "Margetuximab"] },
+      fallback
+    );
+    expect(p.stage).toBe("IV");
+    expect(p.priorTreatments).toEqual(["Trastuzumab", "Tucatinib", "Margetuximab"]);
+    expect(p.priorTreatmentsTimeline?.[0]?.endDate).toBe("2026-09-20");
+  });
+});
+
+describe("recruitment status state machine", () => {
+  it.each([
+    ["RECRUITING", true],
+    ["NOT_YET_RECRUITING", true],
+    ["ENROLLING_BY_INVITATION", true],
+    ["Ongoing, recruiting", true],
+    ["Authorised, recruitment pending", true],
+    ["Recruitment status: Recruiting", true],
+    ["ACTIVE_NOT_RECRUITING", false],
+    ["Active, not recruiting", false],
+    ["Recruitment complete", false],
+    ["Recruitment completed", false],
+    ["Recruitment ended", false],
+    ["Recruitment suspended", false],
+    ["Ongoing, recruitment ended", false],
+    ["Recruiting stopped after recruiting started", false],
+    ["Not Authorised", false],
+    ["Temporarily halted", false],
+    ["COMPLETED", false],
+    ["Pending", false],
+  ])("%s -> open=%s", async (status, open) => {
+    const { isOpenRecruitmentStatus } = await import("@/lib/registries/filters");
+    expect(isOpenRecruitmentStatus(status)).toBe(open);
+  });
+
+  it("CTIS code 3 (ongoing, recruitment pending) is not reported as recruiting", async () => {
+    const { CTIS_OPEN_STATUS } = await import("@/lib/registries/eu-ctr");
+    expect(CTIS_OPEN_STATUS[3]).toBe("Not yet recruiting");
+    expect(CTIS_OPEN_STATUS[4]).toBe("Recruiting");
+  });
+
+  it("'recruitment pending' trials forecast as opens-later", async () => {
+    const [s] = await scoreAllRegistryTrials(
+      [trial({ status: "Authorised, recruitment pending" })],
+      extractPatientProfile("52F HER2-positive breast cancer.")
+    );
+    expect(forecastTrialEligibility(s, extractPatientProfile("52F HER2-positive breast cancer.")).status).toBe(
+      "opens-later"
+    );
+  });
+});
