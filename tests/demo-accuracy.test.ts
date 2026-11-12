@@ -204,3 +204,59 @@ describe("forecast without published criteria", () => {
     expect(f.actions.join(" ")).toMatch(/not published/);
   });
 });
+
+describe("deterministic panel matches scorer state", () => {
+  const base = {
+    trialSummary: "",
+    trialPhase: "Phase 2",
+    profile: {
+      primaryDiagnosis: "Breast Cancer",
+      stage: "IV",
+      age: 52,
+      sex: "female" as const,
+      biomarkers: ["HER2 positive"],
+      priorTreatments: [],
+      location: null,
+      hasMetastaticDisease: true,
+    },
+  };
+
+  it("disease reviewer rejects early-stage-only trials for metastatic patients", async () => {
+    const { generateDeterministicEligibilityPanel } = await import("@/lib/agents/eligibility-panel");
+    const panel = generateDeterministicEligibilityPanel({
+      ...base,
+      trialTitle: "Neoadjuvant therapy in HER2-positive early-stage breast cancer",
+      trialEligibility: "Inclusion Criteria: stage II-III operable breast cancer. Exclusion Criteria: stage IV disease.",
+      trialStatus: "RECRUITING",
+    });
+    expect(panel.reviewers.find((r) => r.id === "disease")?.verdict).toBe("likely-ineligible");
+    expect(panel.consensus.verdict).toBe("likely-ineligible");
+  });
+
+  it("stage II does not match 'phase iii' text", async () => {
+    const { generateDeterministicEligibilityPanel } = await import("@/lib/agents/eligibility-panel");
+    const panel = generateDeterministicEligibilityPanel({
+      ...base,
+      profile: { ...base.profile, stage: "II", hasMetastaticDisease: null },
+      trialTitle: "A phase iii study in breast cancer",
+      trialEligibility: "Inclusion Criteria: adults.",
+      trialStatus: "RECRUITING",
+    });
+    expect(panel.reviewers.find((r) => r.id === "disease")?.verdict).toBe("uncertain");
+  });
+
+  it.each([
+    ["Active, not recruiting", "likely-ineligible"],
+    ["Authorised, recruitment pending", "uncertain"],
+    ["Ongoing, recruiting", "likely-eligible"],
+  ])("logistics reviewer: %s -> %s", async (status, verdict) => {
+    const { generateDeterministicEligibilityPanel } = await import("@/lib/agents/eligibility-panel");
+    const panel = generateDeterministicEligibilityPanel({
+      ...base,
+      trialTitle: "HER2-positive metastatic breast cancer",
+      trialEligibility: "Inclusion Criteria: metastatic HER2-positive breast cancer.",
+      trialStatus: status,
+    });
+    expect(panel.reviewers.find((r) => r.id === "logistics")?.verdict).toBe(verdict);
+  });
+});
