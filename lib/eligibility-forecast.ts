@@ -144,7 +144,7 @@ export function forecastTrialEligibility(
   const notYetRecruiting =
     !hardBlockers.length &&
     isOpenRecruitmentStatus(trial.status) &&
-    normalizeStatus(trial.status).includes("NOT YET");
+    /NOT YET|PENDING/.test(normalizeStatus(trial.status));
 
   // 4. Classify into readiness categories:
   if (hardBlockers.length > 0) {

@@ -1,6 +1,7 @@
 import { capTrialSummary } from "@/lib/format";
 import type { RegistryQueryResult, RegistrySearchParams, RegistryTrial } from "./types";
 import { REGISTRY_TIMEOUT_MS } from "./types";
+import { isOpenRecruitmentStatus } from "./filters";
 
 const LEGACY_SEARCH =
   "https://www.clinicaltrialsregister.eu/ctr-search/search";
@@ -60,7 +61,7 @@ export function parseLegacyHtml(html: string): RegistryTrial[] {
     ];
     const statuses = statusMatches.map((m) => m[1].trim());
     const isOngoing = statuses.some((s) =>
-      /ongoing|recruit|not yet recruit|authoris/i.test(s)
+      isOpenRecruitmentStatus(s)
     );
     if (!isOngoing) continue;
 
@@ -107,7 +108,9 @@ function buildLegacySearchUrl(params: RegistrySearchParams): string {
 
 export const CTIS_OPEN_STATUS: Record<number, string> = {
   2: "Not yet recruiting",
-  3: "Recruiting",
+  // 3 is "ongoing, recruitment pending": the trial started but most sites
+  // have not opened (hasRecruitmentStarted is false in the retrieve payload).
+  3: "Not yet recruiting",
   4: "Recruiting",
 };
 

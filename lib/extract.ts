@@ -152,7 +152,7 @@ function findEndDate(sentence: string): string | undefined {
   const cue = /\b(?:completed|complete|ended|finished|stopped|discontinued|last\s+(?:dose|infusion|cycle|treatment)|progressed|until|through)\b/i;
   const m = sentence.match(cue);
   if (!m || m.index === undefined) return undefined;
-  const after = sentence.slice(m.index, m.index + 60);
+  const after = sentence.slice(m.index, m.index + 120);
   const iso = after.match(/\b(20\d{2})-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?\b/);
   if (iso) return iso[3] ? `${iso[1]}-${iso[2]}-${iso[3]}` : `${iso[1]}-${iso[2]}`;
   const us = after.match(/\b(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(20\d{2})\b/);
@@ -161,6 +161,15 @@ function findEndDate(sentence: string): string | undefined {
   if (named) {
     const mm = MONTHS[named[1].toLowerCase()];
     return named[2] ? `${named[3]}-${mm}-${named[2].padStart(2, "0")}` : `${named[3]}-${mm}`;
+  }
+  // "stopped working in late October": no year, so take the most recent past
+  // occurrence of that month. Notes describe history, never future end dates.
+  const bare = after.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b(?!\s+\d)/i);
+  if (bare) {
+    const month = Number(MONTHS[bare[1].toLowerCase()]);
+    const now = new Date();
+    const year = month <= now.getUTCMonth() + 1 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+    return `${year}-${String(month).padStart(2, "0")}`;
   }
   return undefined;
 }
@@ -212,7 +221,11 @@ function extractTreatmentsAndTimeline(rawText: string): {
         });
       }
 
-      const endDate = findEndDate(sentence);
+      // "Finished X in September 2026, then Y stopped in October": read the
+      // date from the clause naming this drug, not the first date in the sentence.
+      const clause =
+        sentence.split(/;|,?\s+(?:then|later|subsequently|followed by)\s+/).find((c) => item.pattern.test(c)) ?? sentence;
+      const endDate = findEndDate(clause);
       timeline.push({
         name: item.name,
         ongoing: endDate ? false : isCurrent && !isDiscontinued,

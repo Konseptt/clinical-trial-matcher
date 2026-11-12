@@ -30,16 +30,19 @@ export function normalizeStatus(status: string): string {
   return status.trim().toUpperCase().replace(/_/g, " ");
 }
 
+// Phrases that close enrollment even when the text also says "recruit" or
+// "ongoing": "Active, not recruiting", "Ongoing, recruitment ended",
+// "Recruitment completed", "Not authorised".
+const CLOSED_STATUS_RE =
+  /\bnot\s+recruiting\b|\brecruit\w*\s+(?:complete|completed|ended|closed|suspended|stopped|halted|finished)\b|\bnot\s+authori[sz]ed\b|\b(?:completed|terminated|withdrawn|suspended|halted|ended|closed|stopped)\b/i;
+
 export function isOpenRecruitmentStatus(status: string): boolean {
   const normalized = normalizeStatus(status);
   if (EXCLUDED_STATUSES.has(normalized)) return false;
   if (RECRUITING_STATUSES.has(normalized)) return true;
-  // "Not recruiting" contains the word recruit, but it is a closed status.
-  if (normalized === "NOT RECRUITING") return false;
-
+  if (CLOSED_STATUS_RE.test(normalized)) return false;
   return (
     normalized.includes("RECRUIT") ||
-    normalized.includes("NOT YET RECRUIT") ||
     normalized.includes("ONGOING") ||
     normalized.includes("AUTHORIS") ||
     normalized.includes("AUTHORIZ")
