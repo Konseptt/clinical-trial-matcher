@@ -46,6 +46,7 @@ function mtrial(over: Partial<MatchedTrial> = {}): MatchedTrial {
     distance: null,
     biomarkerGates: [],
     washoutChecks: [],
+    eligibilityText: "Inclusion Criteria: adults with the condition.",
     ...over,
   };
 }
