@@ -260,3 +260,22 @@ describe("deterministic panel matches scorer state", () => {
     expect(panel.reviewers.find((r) => r.id === "logistics")?.verdict).toBe(verdict);
   });
 });
+
+describe("prior therapy exclusion", () => {
+  const p = extractPatientProfile("52F HER2-positive metastatic breast cancer stage IV. Prior trastuzumab, completed 2026-09-20.");
+  it.each([
+    ["Exclusion Criteria: prior treatment with trastuzumab.", true],
+    ["Exclusion Criteria: patients who previously received trastuzumab or any HER2 antibody.", true],
+    ["Exclusion Criteria: trastuzumab within 28 days prior to enrollment.", false],
+    ["Exclusion Criteria: prior trastuzumab is allowed if completed more than 6 months ago.", false],
+    ["Inclusion Criteria: prior treatment with trastuzumab. Exclusion Criteria: pregnancy.", false],
+  ])("%s -> blocked=%s", async (text, blocked) => {
+    const [s] = await scoreAllRegistryTrials([trial({ eligibilityText: text })], p);
+    const f = forecastTrialEligibility(s, p);
+    expect(f.status === "likely-ineligible").toBe(blocked);
+    if (blocked) {
+      expect(s.matchScore).toBeLessThanOrEqual(BIOMARKER_CONFLICT_SCORE_CAP);
+      expect(s.criteriaEvaluations?.some((c) => c.category === "prior-treatment" && c.status === "met")).toBe(false);
+    }
+  });
+});

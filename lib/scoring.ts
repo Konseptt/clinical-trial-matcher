@@ -334,6 +334,37 @@ function earlyStageOnlyPenalty(combined: string, eligibilityText: string): numbe
   return 0;
 }
 
+/**
+ * Exclusion criteria that rule out a therapy the patient already had
+ * ("prior treatment with trastuzumab", "previously received a CDK4/6
+ * inhibitor"). A clause with a time window ("within 28 days") is a washout,
+ * handled by checkWashoutEligibility, so it is skipped here.
+ */
+export function priorTherapyExclusions(
+  eligibilityText: string,
+  profile: Pick<PatientProfile, "priorTreatments">
+): string[] {
+  const { exclusion } = splitCriteria(eligibilityText);
+  if (!exclusion) return [];
+  const clauses = exclusion.split(/[.;\n]|\s\d+\.\s/);
+  const hits: string[] = [];
+  for (const treatment of profile.priorTreatments) {
+    const name = treatment.toLowerCase();
+    if (name.length < 4 || /^(?:surgery|chemotherapy|radiation|immunotherapy|targeted therapy)$/.test(name)) continue;
+    const re = new RegExp(
+      `\\b(?:prior|previous(?:ly)?|history of|received|treated with|exposure to)\\b[^.;]{0,60}?(?:^|[^a-z0-9])${escapeRegExp(name)}(?![a-z0-9])`,
+      "i"
+    );
+    const clause = clauses.find((c) => re.test(c));
+    if (!clause) continue;
+    if (/\bwithin\b|\b\d+\s*(?:day|week|month)s?\b|\bwashout\b/i.test(clause)) continue;
+    // "prior trastuzumab is allowed" / "unless" / "except" are permissions, not exclusions.
+    if (/\b(?:allowed|permitted|unless|except|acceptable|eligible)\b/i.test(clause)) continue;
+    hits.push(treatment);
+  }
+  return hits;
+}
+
 export function hasContradictoryStageContext(
   combined: string,
   profile: Pick<PatientProfile, "hasMetastaticDisease">,
@@ -789,6 +820,7 @@ async function scoreTrial(
     hasContradictoryBiomarkers(combined, profile) +
     biomarkerGatePenalty(biomarkerGates, profile);
   const stagePenalties = hasContradictoryStageContext(combined, profile, trial.eligibilityText);
+  const excludedPriorTherapies = priorTherapyExclusions(trial.eligibilityText || "", profile);
 
   const rawTotal = 
     baseline + 
@@ -810,7 +842,8 @@ async function scoreTrial(
 
   // Biomarker and stage conflicts are hard blockers (forecast marks them
   // "Not a match"), so they must not sit at the top on bonus points alone.
-  const hardBlocked = biomarkerPenalties > 0 || stagePenalties > 0;
+  const hardBlocked =
+    biomarkerPenalties > 0 || stagePenalties > 0 || excludedPriorTherapies.length > 0;
   const finalScore = Math.max(
     0,
     Math.min(hardBlocked ? BIOMARKER_CONFLICT_SCORE_CAP : 100, Math.round(rawTotal))
@@ -818,6 +851,22 @@ async function scoreTrial(
 
   const { criteriaEvaluations, reasonsMatched, reasonsToConfirm } =
     evaluateCriteria(trial, profile);
+  if (excludedPriorTherapies.length > 0) {
+    for (const c of criteriaEvaluations) {
+      if (c.category === "prior-treatment") c.status = "not-met";
+    }
+    criteriaEvaluations.unshift({
+      name: "Prior therapy exclusion",
+      category: "prior-treatment",
+      status: "not-met",
+      evidence: `Exclusion criteria rule out prior ${excludedPriorTherapies.join(", ")}`,
+    });
+    reasonsMatched.splice(
+      0,
+      reasonsMatched.length,
+      ...reasonsMatched.filter((r) => !excludedPriorTherapies.some((t) => r.includes(t)))
+    );
+  }
   if (biomarkerPenalties > 0) {
     const conflicts = biomarkerConflicts(biomarkerGates);
     criteriaEvaluations.unshift({
@@ -856,6 +905,7 @@ async function scoreTrial(
       biomarkerPenalties,
       stagePenalties,
       washoutPenalties,
+      excludedPriorTherapies,
       biomarkerGatesMatch,
     }
   };
