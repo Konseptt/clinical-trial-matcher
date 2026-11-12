@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
-// Configurable: NVIDIA retires models (kimi-k3 now returns 410 Gone).
-const DEFAULT_MODEL = "moonshotai/kimi-k3";
+// Configurable via NVIDIA_MODEL: NVIDIA retires models (kimi-k3 returned 410 Gone on 2026-10-15).
+const DEFAULT_MODEL = "minimaxai/minimax-m3.1-flash";
 
 function usableReply(text: string | null | undefined): string {
   const trimmed = text?.trim() ?? "";

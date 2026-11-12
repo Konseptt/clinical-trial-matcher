@@ -297,3 +297,18 @@ describe("location without coordinates", () => {
     expect(la.rankScore!).toBeGreaterThanOrEqual(china.rankScore!);
   });
 });
+
+describe("stage notation", () => {
+  it.each([
+    ["2", "eligible: stage ii breast cancer", true],
+    ["II", "eligible: stage 2 breast cancer", true],
+    ["IIb", "stage iib disease", true],
+    ["2b", "stage IIB disease", true],
+    ["II", "stage iii disease", false],
+    ["Stage IV", "stage 4 disease", true],
+    ["IV", "stage ivermectin", false],
+  ])("%s vs '%s' -> %s", async (stage, text, hit) => {
+    const { stagePattern } = await import("@/lib/scoring");
+    expect(stagePattern(stage).test(text)).toBe(hit);
+  });
+});

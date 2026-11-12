@@ -8,6 +8,7 @@ import {
   evaluateBiomarkerGates,
   hasContradictoryBiomarkers,
   hasContradictoryStageContext,
+  stagePattern,
 } from "@/lib/scoring";
 import { isOpenRecruitmentStatus, normalizeStatus } from "@/lib/registries/filters";
 
@@ -422,7 +423,7 @@ export function generateDeterministicEligibilityPanel(
     };
   } else {
     const stageMatched = Boolean(
-      p.stage && new RegExp(`\\bstage\\s+${escapeRegExp(p.stage.toLowerCase())}(?![a-z0-9])`).test(trialText)
+      p.stage && stagePattern(p.stage).test(trialText)
     );
     disease = {
       id: "disease",
