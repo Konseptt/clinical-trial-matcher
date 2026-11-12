@@ -1,6 +1,13 @@
 import { isNvidiaConfigured, nvidiaChatCompletion } from "@/lib/nvidia";
 import { stripEmDashes } from "@/lib/format";
 import type { PatientProfile } from "@/lib/types";
+import {
+  biomarkerConflicts,
+  biomarkerGatePenalty,
+  escapeRegExp,
+  evaluateBiomarkerGates,
+  hasContradictoryBiomarkers,
+} from "@/lib/scoring";
 
 /**
  * Eligibility Review Panel
@@ -331,10 +338,31 @@ export function generateDeterministicEligibilityPanel(
         "No biomarkers are stated in the profile, so molecular requirements cannot be checked.",
       questions: ["Which biomarker or mutation results does this study require?"],
     };
+  } else if (
+    hasContradictoryBiomarkers(trialText, p) +
+      biomarkerGatePenalty(evaluateBiomarkerGates(trialText, p), p) >
+    0
+  ) {
+    // Same polarity-aware check the scorer and forecast use, so the panel
+    // cannot call "likely eligible" what the card already marks "Not a match".
+    const conflicts = biomarkerConflicts(evaluateBiomarkerGates(trialText, p));
+    molecular = {
+      id: "molecular",
+      role: "Molecular reviewer",
+      focus: "Biomarkers and required mutations",
+      verdict: "likely-ineligible",
+      confidence: 80,
+      rationale: conflicts.length
+        ? `The study requires ${conflicts.join(", ")}, which conflicts with the patient's stated biomarkers.`
+        : "A biomarker requirement in the trial text conflicts with the patient's stated biomarkers.",
+      questions: ["Can the biomarker result be re-confirmed on a recent sample?"],
+    };
   } else {
-    const mentioned = p.biomarkers.filter((m) =>
-      trialText.includes(m.toLowerCase().split(" ")[0])
-    );
+    // Whole-word marker match (e.g. "er" must not match inside "cancer").
+    const mentioned = p.biomarkers.filter((m) => {
+      const marker = m.toLowerCase().split(" ")[0];
+      return new RegExp(`(^|[^a-z0-9])${escapeRegExp(marker)}([^a-z0-9]|$)`).test(trialText);
+    });
     molecular = {
       id: "molecular",
       role: "Molecular reviewer",

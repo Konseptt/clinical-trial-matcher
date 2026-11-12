@@ -16,7 +16,7 @@ function textContains(text: string, term: string): boolean {
   return text.toLowerCase().includes(term.toLowerCase());
 }
 
-function escapeRegExp(s: string): string {
+export function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
@@ -111,9 +111,19 @@ export function checkWashoutEligibility(
   return results;
 }
 
+export const BIOMARKER_CONFLICT_SCORE_CAP = 40;
+
+/** Rules the patient fails, e.g. "ER positive" when the profile says ER negative. */
+export function biomarkerConflicts(gates: BiomarkerGate[]): string[] {
+  return gates
+    .filter((g) => !g.passed)
+    .flatMap((g) => g.rules.filter((r) => r.status === "mismatched"))
+    .map((r) => `${r.marker} ${r.expected}`);
+}
+
 export function evaluateBiomarkerGates(
   eligibilityText: string,
-  profile: PatientProfile
+  profile: Pick<PatientProfile, "biomarkers">
 ): BiomarkerGate[] {
   const text = eligibilityText.toLowerCase();
   const gates: BiomarkerGate[] = [];
@@ -215,7 +225,7 @@ export function evaluateBiomarkerGates(
 
 export function hasContradictoryBiomarkers(
   combined: string,
-  profile: PatientProfile
+  profile: Pick<PatientProfile, "biomarkers">
 ): number {
   let penalty = 0;
 
@@ -253,7 +263,7 @@ export function hasContradictoryBiomarkers(
 
 export function biomarkerGatePenalty(
   gates: BiomarkerGate[],
-  profile: PatientProfile
+  profile: Pick<PatientProfile, "biomarkers">
 ): number {
   const explicitOpposite = (
     marker: string,
@@ -504,6 +514,19 @@ export function evaluateCriteria(
         evidence: `Active recruitment sites in ${profile.location.state || profile.location.country}`,
       });
       reasonsMatched.push(`Study site available in ${profile.location.state || profile.location.country}`);
+    } else if (trial.locations.length > 0) {
+      const listed = trial.locations
+        .map((l) => [l.city, l.country].filter(Boolean).join(", "))
+        .filter(Boolean);
+      criteriaEvaluations.push({
+        name: "Study location / site availability",
+        category: "location",
+        status: "not-met",
+        evidence: `No listed sites in ${profile.location.state || profile.location.country}${
+          listed.length ? `; sites: ${listed.slice(0, 3).join("; ")}` : ""
+        }`,
+      });
+      reasonsToConfirm.push("All listed sites are far away; ask whether new sites are planned");
     } else {
       criteriaEvaluations.push({
         name: "Study location / site availability",
@@ -743,10 +766,27 @@ async function scoreTrial(
     stagePenalties -
     washoutPenalties;
 
-  const finalScore = Math.max(0, Math.min(100, Math.round(rawTotal)));
+  // A biomarker conflict is a hard blocker (forecast marks it "Not a match"),
+  // so it must not sit at the top of the ranking on bonus points alone.
+  const finalScore = Math.max(
+    0,
+    Math.min(biomarkerPenalties > 0 ? BIOMARKER_CONFLICT_SCORE_CAP : 100, Math.round(rawTotal))
+  );
 
   const { criteriaEvaluations, reasonsMatched, reasonsToConfirm } =
     evaluateCriteria(trial, profile);
+  if (biomarkerPenalties > 0) {
+    const conflicts = biomarkerConflicts(biomarkerGates);
+    criteriaEvaluations.unshift({
+      name: "Biomarker requirement",
+      category: "general",
+      status: "not-met",
+      evidence: conflicts.length
+        ? `Study requires ${conflicts.join(", ")}; profile differs`
+        : "Study biomarker requirement conflicts with profile",
+    });
+    reasonsToConfirm.unshift("Confirm biomarker status with study team");
+  }
 
   return {
     score: finalScore,
