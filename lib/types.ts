@@ -79,6 +79,8 @@ export interface MatchScoreBreakdown {
   biomarkerPenalties: number;
   stagePenalties: number;
   washoutPenalties?: number;
+  /** Prior therapies the exclusion criteria rule out outright (not a washout window). */
+  excludedPriorTherapies?: string[];
   biomarkerGatesMatch?: number;
 }
 
