@@ -7,7 +7,9 @@ import {
   escapeRegExp,
   evaluateBiomarkerGates,
   hasContradictoryBiomarkers,
+  hasContradictoryStageContext,
 } from "@/lib/scoring";
+import { isOpenRecruitmentStatus, normalizeStatus } from "@/lib/registries/filters";
 
 /**
  * Eligibility Review Panel
@@ -401,21 +403,27 @@ export function generateDeterministicEligibilityPanel(
   };
 
   // Disease-extent axis
-  const metastaticRequired = /\bmetastatic\b|\bstage iv\b/.test(trialText);
+  // Same negation-aware check the scorer and forecast use, both directions.
+  const stageConflict =
+    hasContradictoryStageContext(trialText, p, input.trialEligibility.toLowerCase()) > 0;
   let disease: ReviewerOpinion;
-  if (metastaticRequired && p.hasMetastaticDisease === false) {
+  if (stageConflict) {
     disease = {
       id: "disease",
       role: "Disease-extent reviewer",
       focus: "Stage and metastatic status",
       verdict: "likely-ineligible",
-      confidence: 70,
+      confidence: 75,
       rationale:
-        "The trial text references metastatic disease, but the profile documents no metastatic disease.",
-      questions: ["Does the study accept non-metastatic patients in any cohort?"],
+        p.hasMetastaticDisease === true
+          ? "The trial appears limited to early-stage, non-metastatic disease, but the profile documents metastatic disease."
+          : "The trial appears limited to metastatic disease, but the profile documents no metastatic disease.",
+      questions: ["Does the study accept this disease extent in any cohort?"],
     };
   } else {
-    const stageMatched = Boolean(p.stage && trialText.includes(p.stage.toLowerCase()));
+    const stageMatched = Boolean(
+      p.stage && new RegExp(`\\bstage\\s+${escapeRegExp(p.stage.toLowerCase())}(?![a-z0-9])`).test(trialText)
+    );
     disease = {
       id: "disease",
       role: "Disease-extent reviewer",
@@ -430,9 +438,9 @@ export function generateDeterministicEligibilityPanel(
   }
 
   // Logistics axis
-  const status = input.trialStatus.trim().toUpperCase().replace(/_/g, " ");
-  const notYet = status.includes("NOT YET");
-  const recruiting = !notYet && /RECRUIT|ONGOING|AUTHORI|OPEN|ENROLL/.test(status);
+  const open = isOpenRecruitmentStatus(input.trialStatus);
+  const notYet = open && /NOT YET|PENDING/.test(normalizeStatus(input.trialStatus));
+  const recruiting = open && !notYet;
   const logistics: ReviewerOpinion = {
     id: "logistics",
     role: "Logistics reviewer",

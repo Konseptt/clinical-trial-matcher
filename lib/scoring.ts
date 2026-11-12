@@ -334,9 +334,9 @@ function earlyStageOnlyPenalty(combined: string, eligibilityText: string): numbe
   return 0;
 }
 
-function hasContradictoryStageContext(
+export function hasContradictoryStageContext(
   combined: string,
-  profile: PatientProfile,
+  profile: Pick<PatientProfile, "hasMetastaticDisease">,
   eligibilityText = ""
 ): number {
   if (profile.hasMetastaticDisease === true) {
