@@ -141,6 +141,12 @@ export function forecastTrialEligibility(
     }
   }
 
+  // EU-CTR and WHO rows carry no criteria text, so nothing above can fail and
+  // the trial would read "Likely eligible now" on title match alone.
+  if (!(trial.eligibilityText ?? "").trim()) {
+    actions.push("Eligibility criteria are not published in this registry; confirm them with the study team");
+  }
+
   const notYetRecruiting =
     !hardBlockers.length &&
     isOpenRecruitmentStatus(trial.status) &&

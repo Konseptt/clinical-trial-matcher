@@ -194,3 +194,13 @@ describe("recruitment status state machine", () => {
     );
   });
 });
+
+describe("forecast without published criteria", () => {
+  it("is action-needed, not ready", async () => {
+    const p = extractPatientProfile("52F HER2-positive breast cancer.");
+    const [s] = await scoreAllRegistryTrials([trial({ registry: "EU-CTR", eligibilityText: "" })], p);
+    const f = forecastTrialEligibility(s, p);
+    expect(f.status).toBe("action-needed");
+    expect(f.actions.join(" ")).toMatch(/not published/);
+  });
+});
