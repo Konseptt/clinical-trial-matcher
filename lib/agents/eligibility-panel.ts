@@ -49,6 +49,23 @@ export interface PanelConsensus {
 export interface EligibilityPanelResult {
   reviewers: ReviewerOpinion[];
   consensus: PanelConsensus;
+  /** "ai": every reviewer answered; "partial": some fell back to rules; "rules": none answered. */
+  source: "ai" | "partial" | "rules";
+  /** Plain-language reason shown to the user when source is not "ai". */
+  notice?: string;
+}
+
+/** Why a reviewer call failed, phrased for a patient or clinician. */
+export function describePanelFailure(error: unknown): string {
+  const status = (error as { status?: number } | null)?.status;
+  const msg = error instanceof Error ? error.message : String(error);
+  if (status === 429 || /\b429\b|rate limit/i.test(msg)) return "the AI service is busy right now";
+  if (status === 404 || status === 410 || /\b(?:404|410)\b|end of life|not found/i.test(msg))
+    return "the configured AI model is unavailable";
+  if (status === 401 || status === 403 || /\b40[13]\b/.test(msg)) return "the AI service rejected the API key";
+  if (/timed? ?out|abort/i.test(msg)) return "the AI service took too long to answer";
+  if (/json|parse|schema/i.test(msg)) return "the AI answer could not be read";
+  return "the AI service returned an error";
 }
 
 export interface PanelInput {
@@ -457,14 +474,18 @@ export function generateDeterministicEligibilityPanel(
   };
 
   const reviewers = [molecular, treatment, disease, logistics];
-  return { reviewers, consensus: deriveConsensus(reviewers) };
+  return { reviewers, consensus: deriveConsensus(reviewers), source: "rules" };
 }
 
 export async function runEligibilityPanel(
   input: PanelInput
 ): Promise<EligibilityPanelResult> {
   if (!isNvidiaConfigured()) {
-    return generateDeterministicEligibilityPanel(input);
+    return {
+      ...generateDeterministicEligibilityPanel(input),
+      source: "rules",
+      notice: "AI review is not set up on this server, so these are rule-based checks of the registry text.",
+    };
   }
 
   const context = buildContext(input);
@@ -477,11 +498,29 @@ export async function runEligibilityPanel(
   // opinion for the same axis. Dropping it lost that axis: a failed molecular
   // call erased a biomarker conflict and softened the consensus.
   const fallback = generateDeterministicEligibilityPanel(input).reviewers;
-  const reviewers = settled.map((r, i) =>
-    r.status === "fulfilled"
-      ? r.value
-      : fallback.find((f) => f.id === REVIEWERS[i].id) ?? fallback[i]
-  );
+  const failed: { role: string; reason: string }[] = [];
+  const reviewers = settled.map((r, i) => {
+    if (r.status === "fulfilled") return r.value;
+    console.warn(`Eligibility reviewer ${REVIEWERS[i].id} failed:`, r.reason);
+    failed.push({ role: REVIEWERS[i].role, reason: describePanelFailure(r.reason) });
+    return fallback.find((f) => f.id === REVIEWERS[i].id) ?? fallback[i];
+  });
 
-  return { reviewers, consensus: deriveConsensus(reviewers) };
+  const consensus = deriveConsensus(reviewers);
+  if (failed.length === 0) return { reviewers, consensus, source: "ai" };
+  const reasons = [...new Set(failed.map((f) => f.reason))].join("; ");
+  if (failed.length === reviewers.length) {
+    return {
+      reviewers,
+      consensus,
+      source: "rules",
+      notice: `AI review did not run because ${reasons}. These are rule-based checks of the registry text. Try again in a minute.`,
+    };
+  }
+  return {
+    reviewers,
+    consensus,
+    source: "partial",
+    notice: `${failed.map((f) => f.role).join(", ")} used rule-based checks because ${reasons}.`,
+  };
 }

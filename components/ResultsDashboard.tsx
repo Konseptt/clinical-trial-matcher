@@ -1025,6 +1025,18 @@ function TrialCard({
                   {panel.consensus.confidence}%)
                 </span>
               </div>
+              <p className="text-faint">
+                {panel.source === "ai"
+                  ? "AI review: four reviewers read this trial against your profile."
+                  : panel.source === "partial"
+                    ? "AI review, partly rule-based."
+                    : "Rule-based review (AI unavailable)."}
+              </p>
+              {panel.notice && (
+                <p role="status" className="text-destructive font-body">
+                  {panel.notice}
+                </p>
+              )}
               {panel.consensus.conflicts.length > 0 && (
                 <p className="text-faint">
                   Split opinion: {panel.consensus.conflicts.join("; ")}.
