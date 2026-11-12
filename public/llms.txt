@@ -1,4 +1,4 @@
-# llms.txt — LLM Crawl & Usage Policy
+# llms.txt: LLM Crawl & Usage Policy
 # https://clinicaltrial.world/llms.txt
 # Specification: https://llmstxt.org
 # Last updated: 2026-11-05
@@ -27,9 +27,9 @@ Clinical Trials 2021 (75 topics, 2,463 judged trials): NDCG@10 0.63.
 
 ## Key Pages
 
-- [Homepage](https://clinicaltrial.world/) — Search clinical trials by condition
-- [Conditions Directory](https://clinicaltrial.world/conditions) — Browse all supported conditions
-- [How Matching Works](https://clinicaltrial.world/how-matching-works) — Algorithm and data source explanation
+- [Homepage](https://clinicaltrial.world/): Search clinical trials by condition
+- [Conditions Directory](https://clinicaltrial.world/conditions): Browse all supported conditions
+- [How Matching Works](https://clinicaltrial.world/how-matching-works): Algorithm and data source explanation
 
 ## Data Sources
 
@@ -61,4 +61,4 @@ mailto:contact@clinicaltrial.world
 
 ## License
 
-MIT — open source, free to use, free to reference.
+MIT, open source, free to use, free to reference.

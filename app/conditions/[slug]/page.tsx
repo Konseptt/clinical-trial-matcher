@@ -24,7 +24,7 @@ export async function generateMetadata({
   if (!condition) return { title: "Condition" };
 
   return {
-    title: `${condition.canonicalName} Clinical Trials — Recruiting Studies`,
+    title: `${condition.canonicalName} Clinical Trials: Recruiting Studies`,
     description: `Browse recruiting ${condition.canonicalName} clinical trials from ClinicalTrials.gov, updated daily. Paste your notes to rank ${condition.canonicalName} studies across four registries by how well you fit. Free.`,
     alternates: { canonical: `/conditions/${condition.slug}` },
     openGraph: { url: `/conditions/${condition.slug}`, type: "website" },

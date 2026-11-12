@@ -1,4 +1,4 @@
-# agents.txt — AI Agent Crawl Policy
+# agents.txt: AI Agent Crawl Policy
 # https://clinicaltrial.world/agents.txt
 # Last updated: 2025
 
@@ -16,7 +16,7 @@ Language: en
 
 # ── Key Pages ─────────────────────────────────────────────────────────────────
 Page: https://clinicaltrial.world/
-Role: Homepage — condition search interface
+Role: Homepage: condition search interface
 
 Page: https://clinicaltrial.world/conditions
 Role: Directory of all supported medical conditions

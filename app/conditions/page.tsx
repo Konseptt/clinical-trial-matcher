@@ -5,7 +5,7 @@ import { listKnownConditions } from "@/lib/normalization";
 export const metadata: Metadata = {
   title: "Clinical Trials by Condition",
   description:
-    "Browse recruiting clinical trials by condition — cancers, multiple sclerosis, Alzheimer's, ALS and more — from ClinicalTrials.gov, updated daily.",
+    "Browse recruiting clinical trials by condition (cancers, multiple sclerosis, Alzheimer's, ALS and more) from ClinicalTrials.gov, updated daily.",
   alternates: { canonical: "/conditions" },
 };
 

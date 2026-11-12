@@ -7,7 +7,7 @@ export interface CriteriaExcerpt {
 function linesFrom(block: string, limit: number): string[] {
   return block
     .split("\n")
-    .map((line) => line.replace(/^[\s>*•\-–\d.)]+/, "").replace(/\s+/g, " ").trim())
+    .map((line) => line.replace(/^[\s>*•\-\u2013\d.)]+/, "").replace(/\s+/g, " ").trim())
     .filter((line) => line.length >= 12)
     .filter((line) => !/^(inclusion|exclusion)\s+criteria:?$/i.test(line))
     .slice(0, limit);

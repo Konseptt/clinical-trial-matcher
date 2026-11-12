@@ -85,11 +85,11 @@ describe("coerceOpinion", () => {
 
   it("keeps at most 3 string questions and strips em dashes from rationale", () => {
     const o = coerceOpinion(spec, {
-      rationale: "stage IV — metastatic",
+      rationale: "stage IV \u2014 metastatic",
       questions: ["a", "b", "c", "d", 5],
     });
     expect(o.questions).toEqual(["a", "b", "c"]);
-    expect(o.rationale).not.toMatch(/—/);
+    expect(o.rationale).not.toMatch(/\u2014/);
   });
 });
 
