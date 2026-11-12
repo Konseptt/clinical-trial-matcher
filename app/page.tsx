@@ -6,7 +6,7 @@ import { listKnownConditions } from "@/lib/normalization";
 import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: { absolute: "Find Clinical Trials for Your Condition — Free, 4 Registries" },
+  title: { absolute: "Find Clinical Trials for Your Condition: Free, 4 Registries" },
   description:
     "Paste your diagnosis and treatment history to find recruiting clinical trials from ClinicalTrials.gov, EU CTR, WHO ICTRP, and ISRCTN, ranked by how well you fit, with age, sex, biomarker, and washout checks. Free, no sign-up.",
   alternates: { canonical: "/" },

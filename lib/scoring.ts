@@ -502,7 +502,7 @@ export function evaluateCriteria(
       (t) => !excluded.includes(t) && hasTerm(`${trial.title} ${trial.summary} ${inclusion}`, t)
     );
     if (excluded.length > 0) {
-      reasonsToConfirm.push(`Exclusion criteria mention ${excluded.join(", ")} — confirm timing/eligibility`);
+      reasonsToConfirm.push(`Exclusion criteria mention ${excluded.join(", ")}; confirm timing/eligibility`);
     }
     if (matchedTreatments.length > 0) {
       criteriaEvaluations.push({
@@ -557,7 +557,7 @@ export function evaluateCriteria(
       name: "Age requirement",
       category: "age",
       status: "met",
-      evidence: `Patient age ${profile.age} within registry limits (${trial.minAgeYears ?? "no min"}–${trial.maxAgeYears ?? "no max"})`,
+      evidence: `Patient age ${profile.age} within registry limits (${trial.minAgeYears ?? "no min"} to ${trial.maxAgeYears ?? "no max"})`,
     });
   } else if (profile.age !== null) {
     criteriaEvaluations.push({

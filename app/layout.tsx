@@ -50,7 +50,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Clinical Trial Matcher — find trials that fit you",
+    title: "Clinical Trial Matcher: find trials that fit you",
     description:
       "Paste your notes, get recruiting trials from four registries ranked by fit. Free, no sign-up.",
   },
