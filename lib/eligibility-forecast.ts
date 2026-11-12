@@ -90,6 +90,9 @@ export function forecastTrialEligibility(
   if (bd.excludedPriorTherapies?.length) {
     hardBlockers.push(`Exclusion criteria rule out prior ${bd.excludedPriorTherapies.join(", ")}`);
   }
+  if (bd.preSurgeryConflict) {
+    hardBlockers.push("Neoadjuvant trial enrolls before surgery; your profile reports surgery done");
+  }
   if (bd.biomarkerPenalties > 0) {
     hardBlockers.push("A required biomarker conflicts with your profile");
   }

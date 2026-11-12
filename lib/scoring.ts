@@ -8,7 +8,7 @@ import type {
 } from "./types";
 import type { RegistryTrial } from "./registries/types";
 import { isPhaseTwoOrAbove, parsePhaseRank } from "./registries/filters";
-import { geocodeLocation, calculateDistance } from "./location";
+import { geocodeLocation, calculateDistance, normalizeCountry, resolveRegistryCountry, usStateCode } from "./location";
 import { normalizeCondition } from "./normalization";
 import { lexicalScores, tokenize } from "./lexical";
 
@@ -335,6 +335,22 @@ function earlyStageOnlyPenalty(combined: string, eligibilityText: string): numbe
 }
 
 /**
+ * Neoadjuvant means treatment before surgery, so a patient who already had
+ * surgery cannot enter. "Post-neoadjuvant" / "after neoadjuvant" / residual
+ * disease trials are for exactly that patient and stay eligible.
+ */
+export function isPreSurgeryTrialAfterSurgery(
+  trial: Pick<RegistryTrial, "title" | "summary">,
+  profile: Pick<PatientProfile, "priorTreatments">
+): boolean {
+  if (!profile.priorTreatments.includes("Surgery")) return false;
+  const text = `${trial.title} ${trial.summary}`.toLowerCase();
+  if (/\bresidual (?:invasive )?disease\b/.test(text)) return false;
+  const cleaned = text.replace(/\b(?:post|after|following)[\s-]+(?:both\s+)?neo[\s-]?adjuvant\b/g, " ");
+  return /\bneo[\s-]?adjuvant\b/.test(cleaned);
+}
+
+/**
  * Exclusion criteria that rule out a therapy the patient already had
  * ("prior treatment with trastuzumab", "previously received a CDK4/6
  * inhibitor"). A clause with a time window ("within 28 days") is a washout,
@@ -607,22 +623,36 @@ export function evaluateCriteria(
 
   // 7. Location requirement
   if (profile.location) {
-    const locParts = [profile.location.city, profile.location.state, profile.location.country].filter(Boolean);
-    const locStr = locParts.join(", ").toLowerCase();
-    const hasNearby = trial.locations.some((l) =>
-      (l.city && locStr.includes(l.city.toLowerCase())) ||
-      (l.state && locStr.includes(l.state.toLowerCase())) ||
-      (l.country && locStr.includes(l.country.toLowerCase()))
+    // Whole-field equality: substring matching let "ES" (Spain) match
+    // "united states" and reported New Jersey sites as "in MA".
+    const same = (a?: string | null, b?: string | null) =>
+      !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+    const pState = usStateCode(profile.location.state) ?? profile.location.state;
+    const pCountry = resolveRegistryCountry(profile.location);
+    const local = trial.locations.find((l) =>
+      same(l.city, profile.location?.city) || same(usStateCode(l.state) ?? l.state, pState)
     );
+    const national = trial.locations.find((l) => !!l.country && same(normalizeCountry(l.country), pCountry));
+    const region = profile.location.state || profile.location.city || profile.location.country;
 
-    if (hasNearby) {
+    if (local) {
       criteriaEvaluations.push({
         name: "Study location / site availability",
         category: "location",
         status: "met",
-        evidence: `Active recruitment sites in ${profile.location.state || profile.location.country}`,
+        evidence: `Active recruitment sites in ${region}`,
       });
-      reasonsMatched.push(`Study site available in ${profile.location.state || profile.location.country}`);
+      reasonsMatched.push(`Study site available in ${region}`);
+    } else if (national) {
+      const where = [national.city, national.state].filter(Boolean).join(", ");
+      criteriaEvaluations.push({
+        name: "Study location / site availability",
+        category: "location",
+        status: "met",
+        evidence: `Sites in ${pCountry}, none listed in ${region}${where ? `; e.g. ${where}` : ""}`,
+      });
+      reasonsMatched.push(`Study sites in ${pCountry}`);
+      reasonsToConfirm.push("Nearest site is out of state; check travel requirements");
     } else if (trial.locations.length > 0) {
       const listed = trial.locations
         .map((l) => [l.city, l.country].filter(Boolean).join(", "))
@@ -686,15 +716,19 @@ async function scoreTrial(
   const norm = normalizeCondition(profile.primaryDiagnosis);
 
   // 1. Diagnosis Match
+  // Exclusion criteria name conditions a study turns away ("concurrent breast
+  // cancer"), and loose words ("breast" + "cancer" far apart) fit a prostate or
+  // abscess study. Full credit needs the whole name outside the exclusions.
   let diagnosisMatch = 0;
+  const diagnosisText = `${trial.title} ${trial.summary} ${splitCriteria(trial.eligibilityText || "").inclusion}`.toLowerCase();
   const diagnosis = norm.canonicalName.toLowerCase();
   const diagnosisWords = diagnosis.split(/\s+/).filter((w) => w.length > 3);
-  const diagnosisHits = diagnosisWords.filter((w) => hasTerm(combined, w)).length;
+  const diagnosisHits = diagnosisWords.filter((w) => hasTerm(diagnosisText, w)).length;
   if (diagnosisWords.length > 0) {
-    diagnosisMatch = Math.round(Math.min(25, (diagnosisHits / diagnosisWords.length) * 25));
+    diagnosisMatch = Math.round(Math.min(12, (diagnosisHits / diagnosisWords.length) * 12));
   }
-  if (norm.synonyms.some((s) => hasTerm(combined, s))) {
-    diagnosisMatch = Math.max(diagnosisMatch, 25);
+  if ([diagnosis, ...norm.synonyms].some((s) => hasTerm(diagnosisText, s))) {
+    diagnosisMatch = 25;
   }
 
   // 2. Subtype Match bonus
@@ -835,9 +869,11 @@ async function scoreTrial(
   const washoutChecks = checkWashoutEligibility(trial.eligibilityText || combined, profile);
   let washoutPenalties = 0;
   for (const check of washoutChecks) {
-    if (check.status === "ineligible") {
+    // An ongoing therapy blocks entry; a washout with a known end date clears
+    // on its own (the forecast shows when), so rank it like an unknown date.
+    if (check.status === "ineligible" && check.actualDays === 0) {
       washoutPenalties += 15;
-    } else if (check.status === "unknown") {
+    } else if (check.status === "ineligible" || check.status === "unknown") {
       washoutPenalties += 5;
     }
   }
@@ -855,6 +891,7 @@ async function scoreTrial(
     biomarkerGatePenalty(biomarkerGates, profile);
   const stagePenalties = hasContradictoryStageContext(combined, profile, trial.eligibilityText);
   const excludedPriorTherapies = priorTherapyExclusions(trial.eligibilityText || "", profile);
+  const preSurgeryConflict = isPreSurgeryTrialAfterSurgery(trial, profile);
 
   const rawTotal = 
     baseline + 
@@ -877,7 +914,7 @@ async function scoreTrial(
   // Biomarker and stage conflicts are hard blockers (forecast marks them
   // "Not a match"), so they must not sit at the top on bonus points alone.
   const hardBlocked =
-    biomarkerPenalties > 0 || stagePenalties > 0 || excludedPriorTherapies.length > 0;
+    biomarkerPenalties > 0 || stagePenalties > 0 || excludedPriorTherapies.length > 0 || preSurgeryConflict;
   const finalScore = Math.max(
     0,
     Math.min(hardBlocked ? BIOMARKER_CONFLICT_SCORE_CAP : 100, Math.round(rawTotal))
@@ -900,6 +937,15 @@ async function scoreTrial(
       reasonsMatched.length,
       ...reasonsMatched.filter((r) => !excludedPriorTherapies.some((t) => r.includes(t)))
     );
+  }
+  if (preSurgeryConflict) {
+    criteriaEvaluations.unshift({
+      name: "Treatment setting",
+      category: "general",
+      status: "not-met",
+      evidence: "Neoadjuvant (before surgery) study; profile reports surgery already done",
+    });
+    reasonsToConfirm.unshift("Confirm whether surgery is complete; neoadjuvant trials enroll before surgery");
   }
   if (biomarkerPenalties > 0) {
     const conflicts = biomarkerConflicts(biomarkerGates);
@@ -940,6 +986,7 @@ async function scoreTrial(
       stagePenalties,
       washoutPenalties,
       excludedPriorTherapies,
+      ...(preSurgeryConflict ? { preSurgeryConflict } : {}),
       biomarkerGatesMatch,
     }
   };

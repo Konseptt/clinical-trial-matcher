@@ -81,6 +81,8 @@ export interface MatchScoreBreakdown {
   washoutPenalties?: number;
   /** Prior therapies the exclusion criteria rule out outright (not a washout window). */
   excludedPriorTherapies?: string[];
+  /** True when a neoadjuvant (pre-surgery) trial meets a patient who already had surgery. */
+  preSurgeryConflict?: boolean;
   biomarkerGatesMatch?: number;
 }
 

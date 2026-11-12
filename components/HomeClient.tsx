@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import AnalysisIntro from "@/components/AnalysisIntro";
 import MatchForm from "@/components/MatchForm";
 import type { AppMode } from "@/lib/types";
 
 export default function HomeClient() {
-  const [mode, setMode] = useState<AppMode>("patient");
+  // /?sample=1 is the clinician sample: open on that tab so MatchForm loads it.
+  const searchParams = useSearchParams();
+  const [mode, setMode] = useState<AppMode>(() =>
+    searchParams.get("sample") === "1" ? "doctor" : "patient"
+  );
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start w-full">

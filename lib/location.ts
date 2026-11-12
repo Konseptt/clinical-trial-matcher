@@ -89,7 +89,15 @@ const KNOWN_COUNTRIES = [
   "Singapore",
 ];
 
-function normalizeCountry(value: string): string {
+/** "MA" or "Massachusetts" → "MA"; null when not a US state. */
+export function usStateCode(value: string | null | undefined): string | null {
+  const v = (value ?? "").trim();
+  if (!v) return null;
+  if (US_STATE_CODES.has(v.toUpperCase())) return v.toUpperCase();
+  return US_STATE_NAMES[v.toLowerCase()] ?? null;
+}
+
+export function normalizeCountry(value: string): string {
   return value
     .replace(/\b(usa|u\.s\.a\.|u\.s\.)\b/gi, "United States")
     .replace(/\b(uk|u\.k\.)\b/gi, "United Kingdom")

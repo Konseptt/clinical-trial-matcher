@@ -145,6 +145,16 @@ function isNegatedMention(sentence: string, pattern: RegExp): boolean {
   return NEGATION_CUE.test(before);
 }
 
+// "Interested in HER2-targeted therapy trials" / "scheduled for mastectomy"
+// name a wish or a plan, not treatment history.
+const NOT_HISTORY_CUE = /\b(?:interested\s+in|looking\s+for|hoping|seeking|options?\s+for|planned|scheduled|upcoming|will\s+(?:undergo|start|receive|begin)|candidate\s+for|considering)\b/i;
+
+function isNotHistoryMention(sentence: string, pattern: RegExp): boolean {
+  const m = sentence.match(pattern);
+  if (!m || m.index === undefined) return false;
+  return NOT_HISTORY_CUE.test(sentence.slice(0, m.index));
+}
+
 const MONTHS: Record<string, string> = {
   jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
   jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
@@ -180,6 +190,27 @@ function findEndDate(sentence: string): string | undefined {
   return undefined;
 }
 
+/** "radiation therapy 6 months ago" → end date counted back from today. */
+function findRelativeEndDate(clause: string, pattern: RegExp, now = new Date()): string | undefined {
+  const m = clause.match(pattern);
+  if (!m || m.index === undefined) return undefined;
+  const r = clause
+    .slice(m.index, m.index + 60)
+    .match(/\b(\d{1,2}|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s+(day|week|month|year)s?\s+ago\b/i);
+  if (!r) return undefined;
+  const word = r[1].toLowerCase();
+  const n = Number(word === "a" || word === "an" ? 1 : NUMBER_WORDS[word] ?? word);
+  const d = new Date(now);
+  const unit = r[2].toLowerCase();
+  if (unit === "day") d.setUTCDate(d.getUTCDate() - n);
+  else if (unit === "week") d.setUTCDate(d.getUTCDate() - 7 * n);
+  else if (unit === "month") d.setUTCMonth(d.getUTCMonth() - n);
+  else d.setUTCFullYear(d.getUTCFullYear() - n);
+  const iso = d.toISOString().slice(0, 10);
+  // Months/years ago are approximate: keep month precision.
+  return unit === "day" || unit === "week" ? iso : iso.slice(0, 7);
+}
+
 function extractTreatmentsAndTimeline(rawText: string): {
   priorTreatments: string[];
   currentTreatment: string | null;
@@ -194,7 +225,9 @@ function extractTreatmentsAndTimeline(rawText: string): {
 
   for (const item of KNOWN_DRUG_PATTERNS) {
     // "No prior chemotherapy" / "denies trastuzumab" must not count as history.
-    const mentions = sentences.filter((s) => item.pattern.test(s) && !isNegatedMention(s, item.pattern));
+    const mentions = sentences.filter(
+      (s) => item.pattern.test(s) && !isNegatedMention(s, item.pattern) && !isNotHistoryMention(s, item.pattern)
+    );
     if (mentions.length > 0) {
       foundNames.add(item.name);
 
@@ -231,7 +264,7 @@ function extractTreatmentsAndTimeline(rawText: string): {
       // date from the clause naming this drug, not the first date in the sentence.
       const clause =
         sentence.split(/;|,?\s+(?:then|later|subsequently|followed by)\s+/).find((c) => item.pattern.test(c)) ?? sentence;
-      const endDate = findEndDate(clause);
+      const endDate = findEndDate(clause) ?? findRelativeEndDate(clause, item.pattern);
       timeline.push({
         name: item.name,
         ongoing: endDate ? false : isCurrent && !isDiscontinued,
@@ -272,9 +305,12 @@ const NUMBER_WORDS: Record<string, string> = {
 
 function extractDiseaseDuration(text: string): string | null {
   const match = text.match(
-    /\b(?:diagnosed|onset|history|symptoms?)\s*(?:approximately|about|around)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(years?|months?|weeks?)\s*ago\b/i
+    // "diagnosed with relapsing MS approximately four years ago": the cue may
+    // sit a few words before the number. A bare "6 months ago" is often a
+    // treatment date ("radiation therapy 6 months ago"), not disease duration.
+    /\b(?:diagnosed|onset|history|symptoms?)\b[^.;]{0,80}?(?:approximately|about|around)?\s*\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(years?|months?|weeks?)\s*ago\b/i
   ) || text.match(
-    /\b(?:approximately|about|around|~)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(years?|months?|weeks?)(?:\s+ago|\s+duration|\s+history)\b/i
+    /\b(?:approximately|about|around|~)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(years?|months?|weeks?)(?:\s+duration|\s+history)\b/i
   );
 
   if (match) {
