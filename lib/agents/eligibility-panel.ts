@@ -473,15 +473,15 @@ export async function runEligibilityPanel(
     REVIEWERS.map((spec) => runReviewer(spec, context, input))
   );
 
-  const reviewers = settled
-    .filter(
-      (r): r is PromiseFulfilledResult<ReviewerOpinion> => r.status === "fulfilled"
-    )
-    .map((r) => r.value);
-
-  if (reviewers.length === 0) {
-    return generateDeterministicEligibilityPanel(input);
-  }
+  // A failed reviewer (rate limit, timeout, bad JSON) is replaced by the rule
+  // opinion for the same axis. Dropping it lost that axis: a failed molecular
+  // call erased a biomarker conflict and softened the consensus.
+  const fallback = generateDeterministicEligibilityPanel(input).reviewers;
+  const reviewers = settled.map((r, i) =>
+    r.status === "fulfilled"
+      ? r.value
+      : fallback.find((f) => f.id === REVIEWERS[i].id) ?? fallback[i]
+  );
 
   return { reviewers, consensus: deriveConsensus(reviewers) };
 }

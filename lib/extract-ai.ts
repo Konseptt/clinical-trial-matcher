@@ -1,4 +1,4 @@
-import { extractPatientProfile } from "@/lib/extract";
+import { extractPatientProfile, normalizeBiomarkers } from "@/lib/extract";
 import { isNvidiaConfigured, nvidiaChatCompletion } from "@/lib/nvidia";
 import { normalizeCondition } from "@/lib/normalization";
 import type { PatientLocation, PatientProfile } from "@/lib/types";
@@ -54,6 +54,20 @@ function mergeTreatmentNames(aiNames: string[], ruleNames: string[]): string[] {
     }
   }
   return out.slice(0, 20);
+}
+
+const RECEPTOR_WORD = /\b(?:her[\s-]?2|er|pr|hr|o?estrogen|progesterone|hormone|triple)\b/i;
+
+/**
+ * Model output says "Estrogen receptor negative" or "ER-"; scoring keys on
+ * "ER negative". Receptor statuses go through the rule normalizer; other
+ * markers (BRCA1, PD-L1 CPS 10) are kept as written.
+ */
+function canonicalBiomarkers(aiMarkers: string[], ruleMarkers: string[]): string[] {
+  if (aiMarkers.length === 0) return ruleMarkers;
+  const canonical = normalizeBiomarkers(aiMarkers.join(". "));
+  const other = aiMarkers.filter((m) => !RECEPTOR_WORD.test(m) && !canonical.some((c) => c.toLowerCase() === m.toLowerCase()));
+  return [...new Set([...canonical, ...other])].slice(0, 15);
 }
 
 function normalizeSex(value: unknown): PatientProfile["sex"] {
@@ -115,9 +129,7 @@ export function coercePatientProfile(
     priorAdvancedTherapies: fallback.priorAdvancedTherapies,
     // Models answer "Stage IV"; scoring and forecast expect the bare "IV".
     stage: asString(record.stage).replace(/^stage\s+/i, "") || fallback.stage,
-    biomarkers: asStringArray(record.biomarkers, 15).length
-      ? asStringArray(record.biomarkers, 15)
-      : fallback.biomarkers,
+    biomarkers: canonicalBiomarkers(asStringArray(record.biomarkers, 15), fallback.biomarkers),
     priorTreatments: mergeTreatmentNames(asStringArray(record.priorTreatments, 20), fallback.priorTreatments),
     priorTreatmentsTimeline: fallback.priorTreatmentsTimeline,
     location: normalizeLocation(record.location) ?? fallback.location,

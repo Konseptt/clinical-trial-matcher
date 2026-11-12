@@ -22,7 +22,13 @@ function detectReceptorStatus(
   return null;
 }
 
-function normalizeBiomarkers(rawText: string): string[] {
+export function normalizeBiomarkers(input: string): string[] {
+  // Spelled-out receptor names ("estrogen receptor negative", common in model
+  // output and letters) map to the ER/PR/HR tokens every downstream check keys on.
+  const rawText = input
+    .replace(/\b(?:o?estrogen)[\s-]+receptors?\b/gi, "ER")
+    .replace(/\bprogesterone[\s-]+receptors?\b/gi, "PR")
+    .replace(/\bhormone[\s-]+receptors?\b/gi, "HR");
   const markers: string[] = [];
   const lower = rawText.toLowerCase();
 
