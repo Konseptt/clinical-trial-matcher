@@ -84,6 +84,9 @@ export function forecastTrialEligibility(
   ) {
     hardBlockers.push("Trial appears limited to metastatic disease");
   }
+  if (bd.stagePenalties > 0 && profile.hasMetastaticDisease === true) {
+    hardBlockers.push("Trial appears limited to early-stage (non-metastatic) disease");
+  }
   if (bd.biomarkerPenalties > 0) {
     hardBlockers.push("A required biomarker conflicts with your profile");
   }

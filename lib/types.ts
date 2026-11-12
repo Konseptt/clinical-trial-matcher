@@ -115,6 +115,8 @@ export interface MatchedTrial {
   trialId: string;
   title: string;
   matchScore: number;
+  /** Uncapped total used for ordering; matchScore is clamped to 0-100 for display, so many strong matches tie at 100. */
+  rankScore?: number;
   scoreBreakdown: MatchScoreBreakdown;
   phase: string;
   summary: string;

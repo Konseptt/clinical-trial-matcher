@@ -48,14 +48,14 @@ describe.skipIf(!process.env.TREC_FIXTURE)("TREC CT 2021 benchmark", () => {
       }
       return { ndcg10: +mean(n).toFixed(4), p10: +mean(p).toFixed(4), auc: +mean(a).toFixed(4) };
     };
-    const full = evaluate((m) => m.matchScore);
+    const full = evaluate((m) => m.rankScore ?? m.matchScore);
     const PENALTIES = new Set(["biomarkerPenalties", "stagePenalties", "washoutPenalties", "exclusionOverlap"]);
     const keys = Object.keys(perTopic[0].trials[0].scoreBreakdown).filter((k) => k !== "baseline");
     const ablation: Record<string, { ndcg10: number; p10: number; auc: number }> = {};
     for (const k of keys) {
       const r = evaluate((m) => {
         const v = (m.scoreBreakdown as unknown as Record<string, number>)[k] ?? 0;
-        return m.matchScore + (PENALTIES.has(k) ? v : -v); // remove this component's contribution
+        return (m.rankScore ?? m.matchScore) + (PENALTIES.has(k) ? v : -v); // remove this component's contribution
       });
       ablation[k] = { ndcg10: +(r.ndcg10 - full.ndcg10).toFixed(4), p10: +(r.p10 - full.p10).toFixed(4), auc: +(r.auc - full.auc).toFixed(4) };
     }

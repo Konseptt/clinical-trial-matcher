@@ -100,7 +100,21 @@ const KNOWN_DRUG_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
   { name: "Cladribine", pattern: /\b(?:cladribine|mavenclad)\b/i },
   { name: "Alemtuzumab", pattern: /\b(?:alemtuzumab|lemtrada)\b/i },
   { name: "Teriflunomide", pattern: /\b(?:teriflunomide|aubagio)\b/i },
-  { name: "Trastuzumab", pattern: /\b(?:trastuzumab|herceptin)\b/i },
+  { name: "Trastuzumab deruxtecan", pattern: /\b(?:trastuzumab[\s-]+deruxtecan|t-?dxd|enhertu)\b/i },
+  { name: "Trastuzumab emtansine", pattern: /\b(?:trastuzumab[\s-]+emtansine|t-?dm1|kadcyla)\b/i },
+  { name: "Trastuzumab", pattern: /\b(?:trastuzumab|herceptin)\b(?![\s-]+(?:deruxtecan|emtansine))/i },
+  { name: "Tucatinib", pattern: /\b(?:tucatinib|tukysa)\b/i },
+  { name: "Lapatinib", pattern: /\b(?:lapatinib|tykerb)\b/i },
+  { name: "Neratinib", pattern: /\b(?:neratinib|nerlynx)\b/i },
+  { name: "Docetaxel", pattern: /\b(?:docetaxel|taxotere)\b/i },
+  { name: "Capecitabine", pattern: /\b(?:capecitabine|xeloda)\b/i },
+  { name: "Letrozole", pattern: /\b(?:letrozole|femara)\b/i },
+  { name: "Exemestane", pattern: /\b(?:exemestane|aromasin)\b/i },
+  { name: "Fulvestrant", pattern: /\b(?:fulvestrant|faslodex)\b/i },
+  { name: "Palbociclib", pattern: /\b(?:palbociclib|ibrance)\b/i },
+  { name: "Ribociclib", pattern: /\b(?:ribociclib|kisqali)\b/i },
+  { name: "Abemaciclib", pattern: /\b(?:abemaciclib|verzenio)\b/i },
+  { name: "Olaparib", pattern: /\b(?:olaparib|lynparza)\b/i },
   { name: "Pertuzumab", pattern: /\b(?:pertuzumab|perjeta)\b/i },
   { name: "Pembrolizumab", pattern: /\b(?:pembrolizumab|keytruda)\b/i },
   { name: "Nivolumab", pattern: /\b(?:nivolumab|opdivo)\b/i },
@@ -115,6 +129,42 @@ const KNOWN_DRUG_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
   { name: "Targeted therapy", pattern: /\btargeted\s+therapy\b/i },
 ];
 
+const NEGATION_CUE = /\b(?:no(?!\s+(?:evidence|sign)\s+of)|not|never|denies|denied|without|naive\s+to|free\s+of)\b(?![^.;]*\b(?:but|however|then|except)\b)[^.;]*$/i;
+
+function isNegatedMention(sentence: string, pattern: RegExp): boolean {
+  const m = sentence.match(pattern);
+  if (!m || m.index === undefined) return false;
+  // Cue within ~6 words before the drug ("no prior chemotherapy", "denies prior trastuzumab").
+  const before = sentence.slice(Math.max(0, m.index - 45), m.index);
+  return NEGATION_CUE.test(before);
+}
+
+const MONTHS: Record<string, string> = {
+  jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+  jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+};
+
+/**
+ * End date when the sentence says the therapy finished ("completed 2026-09-20",
+ * "last infusion August 2026", "ended in March 2026"). Returns YYYY-MM-DD or YYYY-MM.
+ */
+function findEndDate(sentence: string): string | undefined {
+  const cue = /\b(?:completed|complete|ended|finished|stopped|discontinued|last\s+(?:dose|infusion|cycle|treatment)|progressed|until|through)\b/i;
+  const m = sentence.match(cue);
+  if (!m || m.index === undefined) return undefined;
+  const after = sentence.slice(m.index, m.index + 60);
+  const iso = after.match(/\b(20\d{2})-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?\b/);
+  if (iso) return iso[3] ? `${iso[1]}-${iso[2]}-${iso[3]}` : `${iso[1]}-${iso[2]}`;
+  const us = after.match(/\b(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(20\d{2})\b/);
+  if (us) return `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}`;
+  const named = after.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?:(\d{1,2}),?\s+)?(20\d{2})\b/i);
+  if (named) {
+    const mm = MONTHS[named[1].toLowerCase()];
+    return named[2] ? `${named[3]}-${mm}-${named[2].padStart(2, "0")}` : `${named[3]}-${mm}`;
+  }
+  return undefined;
+}
+
 function extractTreatmentsAndTimeline(rawText: string): {
   priorTreatments: string[];
   currentTreatment: string | null;
@@ -128,11 +178,12 @@ function extractTreatmentsAndTimeline(rawText: string): {
   const previousTreatments: Array<{ name: string; reasonDiscontinued?: string }> = [];
 
   for (const item of KNOWN_DRUG_PATTERNS) {
-    if (item.pattern.test(rawText)) {
+    // "No prior chemotherapy" / "denies trastuzumab" must not count as history.
+    const mentions = sentences.filter((s) => item.pattern.test(s) && !isNegatedMention(s, item.pattern));
+    if (mentions.length > 0) {
       foundNames.add(item.name);
 
-      const sentence =
-        sentences.find((s) => item.pattern.test(s))?.toLowerCase() ?? "";
+      const sentence = mentions[0].toLowerCase();
 
       const isDiscontinued =
         /\b(?:discontinued|stopped|switched\s+from|prior\s+to|initially\s+received|previously\s+took|intolerant|failed|former)\b/i.test(sentence) &&
@@ -161,9 +212,11 @@ function extractTreatmentsAndTimeline(rawText: string): {
         });
       }
 
+      const endDate = findEndDate(sentence);
       timeline.push({
         name: item.name,
-        ongoing: isCurrent && !isDiscontinued,
+        ongoing: endDate ? false : isCurrent && !isDiscontinued,
+        ...(endDate ? { endDate } : {}),
         reasonDiscontinued,
       });
     }
@@ -202,7 +255,7 @@ function extractDiseaseDuration(text: string): string | null {
   const match = text.match(
     /\b(?:diagnosed|onset|history|symptoms?)\s*(?:approximately|about|around)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(years?|months?|weeks?)\s*ago\b/i
   ) || text.match(
-    /\b(?:approximately|about|around|~)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(years?|months?|weeks?)(?:\s+ago|\s+duration)?\b/i
+    /\b(?:approximately|about|around|~)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(years?|months?|weeks?)(?:\s+ago|\s+duration|\s+history)\b/i
   );
 
   if (match) {
@@ -314,7 +367,11 @@ function extractInterests(text: string): string[] {
 }
 
 export function extractPatientProfile(rawText: string): PatientProfile {
-  const normalizedText = rawText.replace(/\s+/g, " ");
+  const normalizedText = rawText
+    .replace(/\s+/g, " ")
+    // "not HER2 positive" / "not ER-negative" invert the stated receptor status.
+    .replace(/\bnot\s+((?:her[\s-]?2|er|pr|hr))[\s-]*(?:positive|pos)\b/gi, "$1 negative")
+    .replace(/\bnot\s+((?:her[\s-]?2|er|pr|hr))[\s-]*(?:negative|neg)\b/gi, "$1 positive");
   const text = normalizedText.toLowerCase();
 
   const normCondition = normalizeCondition(normalizedText);

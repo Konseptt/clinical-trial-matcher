@@ -45,23 +45,37 @@ function getDaysSinceDate(dateStr: string): number {
   return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 }
 
+const WASHOUT_ALIASES: Record<string, string[]> = {
+  radiation: ["radiotherapy", "radiation therapy"],
+  chemotherapy: ["chemo"],
+};
+
 export function extractWashoutPeriod(eligibilityText: string, treatmentName: string): number | null {
   const text = eligibilityText.toLowerCase();
   const name = treatmentName.toLowerCase();
 
-  if (!name || !text.includes(name)) return null;
+  if (!name) return null;
+  // Registries say "radiotherapy" where patients say "radiation".
+  const names = WASHOUT_ALIASES[name] ? [name, ...WASHOUT_ALIASES[name]] : [name];
+  const found = names.filter((n) => text.includes(n));
+  if (found.length === 0) return null;
 
-  const safeName = escapeRegExp(name);
+  const safeName = `(?:${found.map(escapeRegExp).join("|")})`;
+  // "X within N days" is an exclusion idiom; in inclusion text it often means
+  // the opposite ("progressed on X within 6 months"), so only read it there.
+  const { exclusion } = splitCriteria(text);
+  const exclusionText = exclusion || text;
 
-  const patterns = [
-    new RegExp(`${safeName}[^.\\n]{0,200}?(?:at least|minimum of|washout|interval of)\\s*(\\d+)\\s*(day|week|month)`, "i"),
-    new RegExp(`(\\d+)\\s*(day|week|month)s?\\s*(?:since|after|prior to)[^.\\n]{0,200}?${safeName}`, "i"),
-    new RegExp(`washout(?:\\s+period)?\\s+(?:of\\s+)?(\\d+)\\s*(day|week|month)s?[^.\\n]{0,200}?${safeName}`, "i"),
-    new RegExp(`(\\d+)\\s*-\\s*(day|week|month)\\s+washout[^.\\n]{0,200}?${safeName}`, "i"),
+  const patterns: Array<[RegExp, string]> = [
+    [new RegExp(`${safeName}[^.\\n]{0,200}?(?:at least|minimum of|washout|interval of)\\s*(\\d+)\\s*(day|week|month)`, "i"), text],
+    [new RegExp(`(\\d+)\\s*(day|week|month)s?\\s*(?:since|after|prior to|before|from)[^.\\n]{0,200}?${safeName}`, "i"), text],
+    [new RegExp(`washout(?:\\s+period)?\\s+(?:of\\s+)?(\\d+)\\s*(day|week|month)s?[^.\\n]{0,200}?${safeName}`, "i"), text],
+    [new RegExp(`(\\d+)\\s*-\\s*(day|week|month)\\s+washout[^.\\n]{0,200}?${safeName}`, "i"), text],
+    [new RegExp(`${safeName}[^.\\n]{0,200}?(?:within|in the (?:last|past|previous))\\s*(\\d+)\\s*(day|week|month)`, "i"), exclusionText],
   ];
-  
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
+
+  for (const [pattern, source] of patterns) {
+    const match = source.match(pattern);
     if (match) {
       const value = parseInt(match[1], 10);
       const unit = match[2].toLowerCase();
@@ -111,6 +125,7 @@ export function checkWashoutEligibility(
   return results;
 }
 
+/** Score ceiling for trials with a hard eligibility conflict (biomarker or stage). */
 export const BIOMARKER_CONFLICT_SCORE_CAP = 40;
 
 /** Rules the patient fails, e.g. "ER positive" when the profile says ER negative. */
@@ -296,11 +311,37 @@ export function biomarkerGatePenalty(
   return Math.min(penalty, 30);
 }
 
+/**
+ * Metastatic patient vs a trial for curable/early disease (neoadjuvant,
+ * operable, stage I-III, or "stage IV" listed as an exclusion).
+ */
+function earlyStageOnlyPenalty(combined: string, eligibilityText: string): number {
+  const { inclusion, exclusion } = splitCriteria(eligibilityText);
+  const titleSummary = eligibilityText ? combined.replace(eligibilityText.toLowerCase(), "") : combined;
+  const inclusionSide = `${titleSummary} ${inclusion}`;
+  const early = [
+    /\b(?:neo)?adjuvant\b/,
+    /\bearly[\s-]+(?:stage|breast)\b/,
+    /\boperable\b/,
+    /\bstage\s+(?:0|i{1,3}[abc]?)(?:\s*(?:-|to|or)\s*i{1,3}[abc]?)?\b(?!\s*(?:-|to|or)\s*iv)/,
+    /\bno (?:evidence of )?distant metasta/,
+  ].filter((re) => re.test(inclusionSide)).length;
+  const excludesMetastatic = /\bstage\s+iv\b|\bdistant metasta|\bmetastatic (?:breast )?(?:cancer|disease)\b/.test(exclusion);
+  // A trial that also enrolls advanced disease ("locally advanced or metastatic") is fine.
+  const admitsAdvanced = /\bmetastatic\b|\badvanced\b|\bstage\s+iv\b/.test(inclusionSide.replace(/\bno (?:evidence of )?distant metasta\w*/g, " ").replace(/\blocally advanced\b/g, " "));
+  if (excludesMetastatic) return 35;
+  if (early > 0 && !admitsAdvanced) return Math.min(early * 15, 35);
+  return 0;
+}
+
 function hasContradictoryStageContext(
   combined: string,
   profile: PatientProfile,
   eligibilityText = ""
 ): number {
+  if (profile.hasMetastaticDisease === true) {
+    return earlyStageOnlyPenalty(combined, eligibilityText);
+  }
   if (profile.hasMetastaticDisease !== false) return 0;
 
   // Exclusion criteria ("no known brain metastases") describe who is turned
@@ -563,6 +604,7 @@ async function scoreTrial(
   query: Set<string>
 ): Promise<{
   score: number;
+  rankScore: number;
   breakdown: MatchScoreBreakdown;
   distance: number | null;
   biomarkerGates: BiomarkerGate[];
@@ -766,11 +808,12 @@ async function scoreTrial(
     stagePenalties -
     washoutPenalties;
 
-  // A biomarker conflict is a hard blocker (forecast marks it "Not a match"),
-  // so it must not sit at the top of the ranking on bonus points alone.
+  // Biomarker and stage conflicts are hard blockers (forecast marks them
+  // "Not a match"), so they must not sit at the top on bonus points alone.
+  const hardBlocked = biomarkerPenalties > 0 || stagePenalties > 0;
   const finalScore = Math.max(
     0,
-    Math.min(biomarkerPenalties > 0 ? BIOMARKER_CONFLICT_SCORE_CAP : 100, Math.round(rawTotal))
+    Math.min(hardBlocked ? BIOMARKER_CONFLICT_SCORE_CAP : 100, Math.round(rawTotal))
   );
 
   const { criteriaEvaluations, reasonsMatched, reasonsToConfirm } =
@@ -790,6 +833,7 @@ async function scoreTrial(
 
   return {
     score: finalScore,
+    rankScore: hardBlocked ? finalScore : rawTotal,
     distance,
     biomarkerGates,
     washoutChecks,
@@ -846,7 +890,9 @@ export function rankMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
   const ranked = [...trials].sort((a, b) => {
     // Phase already contributes phaseBonus to the score; sorting phase-first
     // buried a 95-point phase 1 trial under a 46-point phase 2 one.
-    if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+    const ra = a.rankScore ?? a.matchScore;
+    const rb = b.rankScore ?? b.matchScore;
+    if (rb !== ra) return rb - ra;
     return (isPhaseTwoOrAbove(b.phase) ? 1 : 0) - (isPhaseTwoOrAbove(a.phase) ? 1 : 0);
   });
 
@@ -862,6 +908,7 @@ export async function scoreAllRegistryTrials(
   const scoredPromises = trials.map(async (trial) => {
     const {
       score,
+      rankScore,
       breakdown,
       distance,
       biomarkerGates,
@@ -876,6 +923,7 @@ export async function scoreAllRegistryTrials(
       trialId: trial.trialId,
       title: trial.title,
       matchScore: score,
+      rankScore,
       scoreBreakdown: breakdown,
       distance,
       phase: trial.phase,

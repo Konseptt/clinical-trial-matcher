@@ -1215,16 +1215,16 @@ export default function ResultsDashboard({
 
     return [...filtered].sort((a, b) => {
       if (sortBy === "readiness")
-        return rankOf(a) - rankOf(b) || b.matchScore - a.matchScore;
+        return rankOf(a) - rankOf(b) || (b.rankScore ?? b.matchScore) - (a.rankScore ?? a.matchScore);
       if (sortBy === "phase")
         return (
           parsePhaseRank(b.phase) - parsePhaseRank(a.phase) ||
-          b.matchScore - a.matchScore
+          (b.rankScore ?? b.matchScore) - (a.rankScore ?? a.matchScore)
         );
       if (sortBy === "distance") {
         const da = a.distance ?? Infinity;
         const db = b.distance ?? Infinity;
-        return da - db || b.matchScore - a.matchScore;
+        return da - db || (b.rankScore ?? b.matchScore) - (a.rankScore ?? a.matchScore);
       }
       return 0;
     });

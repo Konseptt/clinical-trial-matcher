@@ -27,7 +27,7 @@ function dedupeMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
   for (const trial of trials) {
     const key = canonicalTrialId(trial.trialId);
     const existing = byKey.get(key);
-    if (!existing || trial.matchScore > existing.matchScore) {
+    if (!existing || (trial.rankScore ?? trial.matchScore) > (existing.rankScore ?? existing.matchScore)) {
       byKey.set(key, trial);
     }
   }
