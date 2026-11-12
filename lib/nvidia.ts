@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
-const MODEL = "moonshotai/kimi-k3";
+// Configurable: NVIDIA retires models (kimi-k3 now returns 410 Gone).
+const DEFAULT_MODEL = "moonshotai/kimi-k3";
 
 function usableReply(text: string | null | undefined): string {
   const trimmed = text?.trim() ?? "";
@@ -27,14 +28,16 @@ export async function nvidiaChatCompletion(options: {
     baseURL: NVIDIA_BASE_URL,
     apiKey,
     timeout: 30_000,
+    // Default 2 retries turned a hung endpoint into a ~90s wait before fallback.
+    maxRetries: 1,
   });
 
   const completion = await client.chat.completions.create({
-    model: MODEL,
+    model: process.env.NVIDIA_MODEL?.trim() || DEFAULT_MODEL,
     messages: options.messages,
-    temperature: 1,
+    temperature: options.temperature ?? 0.2,
     top_p: 0.95,
-    max_tokens: 1024,
+    max_tokens: options.maxTokens ?? 1024,
     stream: false,
     reasoning_effort: "low",
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
