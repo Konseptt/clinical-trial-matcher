@@ -279,3 +279,21 @@ describe("prior therapy exclusion", () => {
     }
   });
 });
+
+describe("location without coordinates", () => {
+  it("foreign-only sites earn no location credit; in-country far sites rank above them", async () => {
+    const p = {
+      ...extractPatientProfile("52F HER2-positive breast cancer."),
+      location: { city: "Boston", state: "MA", country: "United States" },
+    };
+    const [china, la] = await scoreAllRegistryTrials(
+      [
+        trial({ trialId: "CN", locations: [{ facility: "", city: "Hangzhou", state: "Zhejiang", country: "China" }] }),
+        trial({ trialId: "LA", locations: [{ facility: "", city: "Los Angeles", state: "CA", country: "United States" }] }),
+      ],
+      p
+    );
+    expect(china.scoreBreakdown.locationMatch).toBe(0);
+    expect(la.rankScore!).toBeGreaterThanOrEqual(china.rankScore!);
+  });
+});

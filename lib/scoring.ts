@@ -365,6 +365,17 @@ export function priorTherapyExclusions(
   return hits;
 }
 
+/**
+ * No site coordinates: a same-country site counts like a mid-range distance,
+ * a foreign or unlisted site earns nothing. The old flat +8 ranked a trial in
+ * China above a US site 2,500 miles away for a Boston patient.
+ */
+function sameCountryBonus(trial: RegistryTrial, profile: PatientProfile): number {
+  const country = profile.location?.country?.toLowerCase();
+  if (!country) return 0;
+  return trial.locations.some((l) => l.country?.toLowerCase() === country) ? 4 : 0;
+}
+
 export function hasContradictoryStageContext(
   combined: string,
   profile: Pick<PatientProfile, "hasMetastaticDisease">,
@@ -769,10 +780,10 @@ async function scoreTrial(
         else if (distance <= 500) locationMatch = 4;
         else locationMatch = 0;
       } else {
-        locationMatch = 8;
+        locationMatch = sameCountryBonus(trial, profile);
       }
     } else {
-      locationMatch = 8;
+      locationMatch = sameCountryBonus(trial, profile);
     }
   }
 
