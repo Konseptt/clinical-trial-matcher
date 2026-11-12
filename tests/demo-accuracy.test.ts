@@ -312,3 +312,12 @@ describe("stage notation", () => {
     expect(stagePattern(stage).test(text)).toBe(hit);
   });
 });
+
+describe("spelled-out receptor names", () => {
+  it("'estrogen receptor negative, progesterone receptor positive' maps to ER/PR tokens", () => {
+    const b = extractPatientProfile(
+      "Breast cancer, HER2 positive, estrogen receptor negative, progesterone receptor positive. 50F."
+    ).biomarkers;
+    expect(b).toEqual(expect.arrayContaining(["HER2 positive", "ER negative", "PR positive"]));
+  });
+});
