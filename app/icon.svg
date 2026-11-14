@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2c96a"/>
+      <stop offset="1" stop-color="#c08a2e"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#1d2c52"/>
+  <circle cx="16" cy="17" r="9" fill="url(#g)"/>
+  <!-- Simplified mark for small sizes: solid bridge, three arches, no railing. -->
+  <path d="M2.5 23.5Q16 12.5 29.5 23.5V27H2.5Z" fill="#f6f1e4"/>
+  <path d="M11.6 27V24.2a4.4 4.4 0 0 1 8.8 0V27ZM4.6 27V25.6a2.3 2.3 0 0 1 4.6 0V27ZM22.8 27V25.6a2.3 2.3 0 0 1 4.6 0V27Z" fill="#1d2c52"/>
+</svg>

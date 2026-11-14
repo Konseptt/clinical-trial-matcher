@@ -57,9 +57,9 @@ export const metadata: Metadata = {
 
 function Masthead() {
   return (
-    <header className="mb-8 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-      <Link href="/" className="inline-flex items-center gap-2 font-display text-lg font-semibold text-foreground">
-        <img src="/brand/trialbridge-mark-240.png" alt="" width={62} height={29} className="self-center" />
+    <header className="mb-8 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+      <Link href="/" className="inline-flex items-center gap-3 font-display text-xl font-semibold text-foreground">
+        <img src="/brand/trialbridge-mark-240.png" alt="" width={90} height={42} />
         TrialBridge
       </Link>
       <nav aria-label="Site" className="flex flex-wrap gap-6 items-center">
