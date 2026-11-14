@@ -80,9 +80,9 @@ cp .env.example .env.local
 The API key is server-side only. Clinician mode works without it.
 
 When authentication is configured, run `npm run db:migrate` once against the
-PostgreSQL database. Public trial search remains available without signing in;
-Google sign-in is required for AI-generated patient summaries and the
-eligibility review panel. User profiles are stored in PostgreSQL.
+PostgreSQL database. Google sign-in is required to search trials,
+generate patient summaries and run the eligibility review panel. Condition and
+trial pages stay public. User profiles are stored in PostgreSQL.
 
 When configured, trial cards also support **Generate patient summary** for consultation materials.
  

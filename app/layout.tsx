@@ -35,11 +35,11 @@ export const metadata: Metadata = {
     template: "%s | TrialBridge",
   },
   description:
-    "Free clinical trial search. Paste your diagnosis and treatment history to find recruiting studies across ClinicalTrials.gov, the EU, WHO, and ISRCTN registries, ranked by how well you fit. No sign-up.",
+    "Free clinical trial search. Paste your diagnosis and treatment history to find recruiting studies across ClinicalTrials.gov, the EU, WHO, and ISRCTN registries, ranked by how well you fit. Sign in with Google to search.",
   openGraph: {
     title: "TrialBridge",
     description:
-      "Find recruiting clinical trials that fit your diagnosis, across four global registries. Free, no sign-up.",
+      "Find recruiting clinical trials that fit your diagnosis, across four global registries. Free with Google sign-in.",
     url: SITE_URL,
     siteName: "TrialBridge",
     type: "website",
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "TrialBridge: find trials that fit you",
     description:
-      "Paste your notes, get recruiting trials from four registries ranked by fit. Free, no sign-up.",
+      "Paste your notes, get recruiting trials from four registries ranked by fit. Free with Google sign-in.",
   },
   robots: { index: true, follow: true, "max-snippet": -1, "max-image-preview": "large" },
   keywords: ["clinical trials", "clinical trial search", "recruiting studies", "trial eligibility", "ClinicalTrials.gov", "EU clinical trials register", "WHO ICTRP", "ISRCTN"],
