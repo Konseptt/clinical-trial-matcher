@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { getSession } from "next-auth/react";
 import { MODE_STORAGE_KEY } from "@/lib/mode";
 import { SAMPLE_NOTES, SAMPLE_PATIENT_DESCRIPTION } from "@/lib/sample-notes";
 import type { AppMode, PatientProfile } from "@/lib/types";
@@ -18,6 +19,11 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
   >([]);
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Search requires sign-in; null while the session check is pending.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  useEffect(() => {
+    getSession().then((s) => setSignedIn(Boolean(s?.user))).catch(() => setSignedIn(false));
+  }, []);
 
   useEffect(() => {
     // Param/prop-driven seeding plus client-only storage hydration on mount.
@@ -145,9 +151,25 @@ export default function MatchForm({ mode }: { mode: AppMode }) {
         )}
 
         <div className="mt-8 flex flex-col sm:flex-row sm:items-stretch gap-3">
-          <button type="submit" className="btn-primary w-full sm:w-auto">
-            {isPatient ? "Search trials" : "Run search"}
-          </button>
+          {signedIn === false ? (
+            <Link
+              href="/sign-in?callbackUrl=/"
+              onClick={() => {
+                // Keep typed notes so they are still there after sign-in.
+                try {
+                  if (notes.trim()) sessionStorage.setItem("clinical_notes", notes.trim());
+                  sessionStorage.setItem(MODE_STORAGE_KEY, mode);
+                } catch {}
+              }}
+              className="btn-primary w-full sm:w-auto text-center"
+            >
+              Sign in to search
+            </Link>
+          ) : (
+            <button type="submit" disabled={signedIn === null} className="btn-primary w-full sm:w-auto">
+              {isPatient ? "Search trials" : "Run search"}
+            </button>
+          )}
           <Link
             href={isPatient ? "/?sample=patient" : "/?sample=1"}
             className="btn-secondary w-full sm:w-auto"

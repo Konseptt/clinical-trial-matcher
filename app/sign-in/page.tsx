@@ -17,8 +17,8 @@ export default async function SignInPage({
     <section className="max-w-md space-y-6">
       <div>
         <p className="eyebrow">Account access</p>
-        <h1 className="font-display text-3xl font-semibold text-foreground mt-2">Sign in to use AI review</h1>
-        <p className="section-hint mt-3">Google sign-in unlocks patient summaries and the eligibility review panel after your trial search.</p>
+        <h1 className="font-display text-3xl font-semibold text-foreground mt-2">Sign in to search trials</h1>
+        <p className="section-hint mt-3">Google sign-in unlocks trial search, patient summaries and the eligibility review panel.</p>
       </div>
       <form action={async () => { "use server"; await signIn("google", { redirectTo: callbackUrl }); }}>
         <button type="submit" className="btn-primary">Continue with Google</button>

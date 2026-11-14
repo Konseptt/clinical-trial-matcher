@@ -16,9 +16,11 @@ import { geocodeLocation } from "@/lib/location";
 beforeEach(() => aiExtract.mockReset());
 
 describe("audit fix: paid LLM gated behind auth + quota", () => {
-  it("anonymous patient-mode search never calls the LLM", async () => {
-    const r = await getResultsAction("I have breast cancer, 52 years old", "patient");
-    expect(r.success).toBe(true);
+  it("anonymous search is refused before any work, in both modes", async () => {
+    for (const mode of ["patient", "doctor"] as const) {
+      const r = await getResultsAction("I have breast cancer, 52 years old", mode);
+      expect(r).toEqual({ success: false, error: "Please sign in with Google to search trials." });
+    }
     expect(aiExtract).not.toHaveBeenCalled();
   });
   it("signed-in patient-mode search uses the LLM", async () => {

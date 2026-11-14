@@ -36,6 +36,7 @@ function dedupeMatchedTrials(trials: MatchedTrial[]): MatchedTrial[] {
 }
 
 const MAX_CLIENT_TRIALS = 50;
+const SIGN_IN_REQUIRED = "Please sign in with Google to search trials.";
 
 function sanitizeClientTrial(t: unknown): RegistryTrial | null {
   if (!t || typeof t !== "object") return null;
@@ -87,12 +88,14 @@ export async function getResultsAction(
     };
   }
 
+  const userId = (await auth())?.user?.id;
+  if (!userId) return { success: false, error: SIGN_IN_REQUIRED };
+
   try {
     let allowAi = false;
     if (mode === "patient") {
-      const userId = (await auth())?.user?.id;
       // Quota/DB failure must not fail the search: fall back to rule extraction.
-      allowAi = userId ? await consumeAiQuota(userId).catch(() => false) : false;
+      allowAi = await consumeAiQuota(userId).catch(() => false);
     }
     const data = await runMatchPipeline(trimmedNotes, mode, allowAi);
     return { success: true, data };
@@ -111,6 +114,7 @@ export async function getResultsAction(
 export async function getResultsByProfileAction(
   profile: PatientProfile
 ): Promise<MatchActionResult> {
+  if (!(await auth())?.user) return { success: false, error: SIGN_IN_REQUIRED };
   const safeProfile = validatePatientProfile(profile);
   if (!safeProfile) {
     return { success: false, error: "The clinical profile is invalid or too large." };
