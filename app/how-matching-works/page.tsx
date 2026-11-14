@@ -5,14 +5,14 @@ import { absoluteUrl } from "@/lib/site";
 export const metadata: Metadata = {
   title: "How matching works",
   description:
-    "How Clinical Trial Matcher queries public registries, labels eligibility lines, and forecasts a washout date. Scores are estimates. The study team confirms eligibility.",
+    "How TrialBridge queries public registries, labels eligibility lines, and forecasts a washout date. Scores are estimates. The study team confirms eligibility.",
   alternates: { canonical: "/how-matching-works" },
 };
 
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "MedicalWebPage",
-  name: "How Clinical Trial Matcher searches registries",
+  name: "How TrialBridge searches registries",
   url: absoluteUrl("/how-matching-works"),
   description:
     "The matcher queries public registries, labels each eligibility line as met, not met, or unknown, and projects a washout date from the registry sentence and the dates you enter. It does not decide eligibility.",

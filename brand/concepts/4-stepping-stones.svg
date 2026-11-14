@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="600" height="600"><defs>
+<filter id="c3rough" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="2" seed="5" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="1.8"/></filter>
+<filter id="c3paper"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="12"/><feColorMatrix values="0 0 0 0 0.45  0 0 0 0 0.38  0 0 0 0 0.28  0 0 0 0.09 0"/></filter>
+<radialGradient id="c3gold" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="#fbe7b0"/><stop offset=".45" stop-color="#e0b25a"/><stop offset="1" stop-color="#a8761f"/></radialGradient>
+<radialGradient id="c3glow"><stop offset="0" stop-color="#f1c76b" stop-opacity=".5"/><stop offset="1" stop-color="#f1c76b" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="100" height="100" fill="#f5efe2"/><rect width="100" height="100" filter="url(#c3paper)"/><g filter="url(#c3rough)">
+<path d="M6 70C16 67 24 73 34 70S52 67 62 70S80 73 94 69" fill="none" stroke="#1d2c52" stroke-width="1.4" stroke-linecap="round" opacity=".55"/>
+<path d="M10 79C20 76 30 82 42 79S60 76 72 79S86 81 92 78" fill="none" stroke="#1d2c52" stroke-width="1.2" stroke-linecap="round" opacity=".4"/>
+<path d="M14 64c1-4 9-5 12-2s-1 6-6 6-7-1-6-4z" fill="#1d2c52"/>
+<path d="M32 57c1-4 10-5 13-1s-2 7-7 6-7-2-6-5z" fill="#1d2c52"/>
+<path d="M51 50c2-4 11-4 13 0s-3 7-8 6-6-3-5-6z" fill="#1d2c52"/>
+<path d="M22 54c3-2 6-2 8 0M41 47c3-2 6-2 8 0M60 41c3-2 6-2 8 0" fill="none" stroke="#1d2c52" stroke-width=".9" stroke-dasharray="1.6 2" stroke-linecap="round"/></g>
+<circle cx="79" cy="40" r="14" fill="url(#c3glow)"/>
+<path d="M70 41c1-6 12-8 17-3s-2 10-9 9-9-2-8-6z" fill="url(#c3gold)"/></svg>

@@ -33,12 +33,6 @@ export default function HomeClient() {
           </button>
         </nav>
 
-        <p className="callout">
-          {mode === "patient"
-            ? "Provide a narrative clinical summary. The system extracts key eligibility variables and searches major international registries."
-            : "Enter structured information from the medical record. The system parses eligibility criteria and queries major trial registries."}
-        </p>
-
         <AnalysisIntro mode={mode} />
       </div>
 

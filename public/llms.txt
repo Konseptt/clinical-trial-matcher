@@ -3,7 +3,7 @@
 # Specification: https://llmstxt.org
 # Last updated: 2026-11-05
 
-# Clinical Trial Matcher
+# TrialBridge
 
 > A free, open-source tool that helps patients and caregivers find recruiting
 > clinical trials matching their medical condition. Searches ClinicalTrials.gov,
@@ -12,7 +12,7 @@
 
 ## What This Site Does
 
-Clinical Trial Matcher aggregates recruiting clinical trials from multiple
+TrialBridge aggregates recruiting clinical trials from multiple
 global registries and matches them to a user-supplied condition and profile.
 It also parses trial eligibility criteria to estimate when a washout period
 from a prior therapy would clear, enabling patients to know when they might

@@ -1791,7 +1791,7 @@ export default function ResultsDashboard({
             </div>
 
             <div className="hidden print:block border-b border-foreground pb-4">
-              <h2 className="text-2xl font-bold text-foreground">Clinical Trial Matcher: Discussion Guide</h2>
+              <h2 className="text-2xl font-bold text-foreground">TrialBridge: Discussion Guide</h2>
               <p className="text-sm text-faint mt-1 font-body">Date: {new Date().toLocaleDateString()}</p>
             </div>
 

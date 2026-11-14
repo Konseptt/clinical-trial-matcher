@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Clinical Trial Matcher: search four public trial registries with your clinical notes";
+export const alt = "TrialBridge: search four public trial registries with your clinical notes";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -19,7 +19,7 @@ export default function OpengraphImage() {
           color: "#f8fafc",
         }}
       >
-        <div style={{ fontSize: 72, fontWeight: 700 }}>Clinical Trial Matcher</div>
+        <div style={{ fontSize: 72, fontWeight: 700 }}>TrialBridge</div>
         <div style={{ fontSize: 34, marginTop: 24, color: "#cbd5e1" }}>
           ClinicalTrials.gov · EU CTR · WHO ICTRP · ISRCTN
         </div>

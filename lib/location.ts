@@ -311,7 +311,7 @@ export async function geocodeLocation(
 
       const response = await fetch(`${NOMINATIM_BASE}?${params.toString()}`, {
         headers: {
-          "User-Agent": "ClinicalTrialMatcher/1.0 (contact@example.com)",
+          "User-Agent": "TrialBridge/1.0 (contact@example.com)",
           Accept: "application/json",
         },
         next: { revalidate: 86400 },

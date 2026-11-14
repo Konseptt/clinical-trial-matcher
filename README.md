@@ -1,4 +1,4 @@
-# Clinical Trial Matcher
+# TrialBridge
 
 Search international clinical trial registries using patient clinical information. Supports patient narrative input and clinician chart notes, with ranked results from multiple public databases.
 

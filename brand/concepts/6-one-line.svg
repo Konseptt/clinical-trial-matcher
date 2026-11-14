@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="600" height="600"><defs>
+<filter id="c5rough" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="2" seed="7" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="1.8"/></filter>
+<filter id="c5paper"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="14"/><feColorMatrix values="0 0 0 0 0.45  0 0 0 0 0.38  0 0 0 0 0.28  0 0 0 0.09 0"/></filter>
+<radialGradient id="c5gold" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="#fbe7b0"/><stop offset=".45" stop-color="#e0b25a"/><stop offset="1" stop-color="#a8761f"/></radialGradient>
+<radialGradient id="c5glow"><stop offset="0" stop-color="#f1c76b" stop-opacity=".5"/><stop offset="1" stop-color="#f1c76b" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="100" height="100" fill="#f5efe2"/><rect width="100" height="100" filter="url(#c5paper)"/><g filter="url(#c5rough)"><path d="M13 67C7 62 12 53 19 56C25 59 22 68 16 66C22 44 34 29 49 28C64 27 75 41 80 61" fill="none" stroke="#1d2c52" stroke-width="3.2" stroke-linecap="round"/>
+<path d="M10 70C30 68.5 52 70.5 76 69" fill="none" stroke="#1d2c52" stroke-width="1.6" stroke-linecap="round"/></g>
+<circle cx="83" cy="64" r="12" fill="url(#c5glow)"/><path d="M80 64c0-3 3-5 6-4s4 4 2 6-6 3-7 1-1-2-1-3z" fill="url(#c5gold)"/></svg>

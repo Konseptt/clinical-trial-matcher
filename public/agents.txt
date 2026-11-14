@@ -3,7 +3,7 @@
 # Last updated: 2025
 
 # ── Site Identity ─────────────────────────────────────────────────────────────
-Name: Clinical Trial Matcher
+Name: TrialBridge
 URL: https://clinicaltrial.world
 Description: A free, open-source tool that searches ClinicalTrials.gov, EU Clinical Trials Register, WHO ICTRP, and ISRCTN to help patients and caregivers find recruiting clinical trials matching their condition. Includes washout-period forecasting from eligibility criteria text.
 

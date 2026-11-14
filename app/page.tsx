@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 const FAQ: Array<[string, string]> = [
   [
-    "Is Clinical Trial Matcher free?",
+    "Is TrialBridge free?",
     "Yes. Searching is free and needs no account. Signing in with Google is optional and adds saved profiles and plain-language AI summaries."
   ],
   [
@@ -44,7 +44,7 @@ const jsonLd = {
   "@graph": [
     {
   "@type": "WebApplication",
-  name: "Clinical Trial Matcher",
+  name: "TrialBridge",
   url: SITE_URL,
   applicationCategory: "HealthApplication",
   description:

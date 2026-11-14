@@ -31,26 +31,23 @@ const firaCode = Fira_Code({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Clinical Trial Matcher",
-    template: "%s | Clinical Trial Matcher",
+    default: "TrialBridge",
+    template: "%s | TrialBridge",
   },
   description:
     "Free clinical trial search. Paste your diagnosis and treatment history to find recruiting studies across ClinicalTrials.gov, the EU, WHO, and ISRCTN registries, ranked by how well you fit. No sign-up.",
-  icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
-  },
   openGraph: {
-    title: "Clinical Trial Matcher",
+    title: "TrialBridge",
     description:
       "Find recruiting clinical trials that fit your diagnosis, across four global registries. Free, no sign-up.",
     url: SITE_URL,
-    siteName: "Clinical Trial Matcher",
+    siteName: "TrialBridge",
     type: "website",
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Clinical Trial Matcher: find trials that fit you",
+    title: "TrialBridge: find trials that fit you",
     description:
       "Paste your notes, get recruiting trials from four registries ranked by fit. Free, no sign-up.",
   },
@@ -61,8 +58,9 @@ export const metadata: Metadata = {
 function Masthead() {
   return (
     <header className="mb-8 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-      <Link href="/" className="font-display text-lg font-semibold text-foreground">
-        Clinical Trial Matcher
+      <Link href="/" className="inline-flex items-center gap-2 font-display text-lg font-semibold text-foreground">
+        <img src="/brand/trialbridge-mark-240.png" alt="" width={62} height={29} className="self-center" />
+        TrialBridge
       </Link>
       <nav aria-label="Site" className="flex flex-wrap gap-6 items-center">
         <Link href="/how-matching-works" className="font-body text-sm text-faint hover:text-foreground">
@@ -88,9 +86,12 @@ export default function RootLayout({
       className={`${figtree.variable} ${fraunces.variable} ${firaCode.variable}`}
     >
       <body>
+        {/* Production only, so local and preview sessions stay out of the data.
+            afterInteractive: lazyOnload waited for window load and missed short visits. */}
+        {process.env.VERCEL_ENV === "production" && (
         <Script
           id="microsoft-clarity"
-          strategy="lazyOnload"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `(function(c,l,a,r,i,t,y){
         c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -99,6 +100,7 @@ export default function RootLayout({
     })(window, document, "clarity", "script", "yt9jknem3b");`,
           }}
         />
+        )}
         <a href="#main" className="skip-link">
           Skip to main content
         </a>

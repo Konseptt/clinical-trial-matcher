@@ -206,7 +206,7 @@ export async function queryEuCtr(
   const response = await fetch(url, {
     headers: {
       Accept: "text/html",
-      "User-Agent": "ClinicalTrialMatcher/1.0",
+      "User-Agent": "TrialBridge/1.0",
     },
     next: { revalidate: 900 },
     signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),

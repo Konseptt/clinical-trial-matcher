@@ -51,7 +51,7 @@ export function buildIcsCalendar(
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Clinical Trial Matcher//Eligibility Forecast//EN",
+    "PRODID:-//TrialBridge//Eligibility Forecast//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${escapeText(calName)}`,

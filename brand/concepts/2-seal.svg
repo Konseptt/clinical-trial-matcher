@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="600" height="600"><defs>
+<filter id="c1rough" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="2" seed="3" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="1.8"/></filter>
+<filter id="c1paper"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="10"/><feColorMatrix values="0 0 0 0 0.45  0 0 0 0 0.38  0 0 0 0 0.28  0 0 0 0.09 0"/></filter>
+<radialGradient id="c1gold" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="#fbe7b0"/><stop offset=".45" stop-color="#e0b25a"/><stop offset="1" stop-color="#a8761f"/></radialGradient>
+<radialGradient id="c1glow"><stop offset="0" stop-color="#f1c76b" stop-opacity=".5"/><stop offset="1" stop-color="#f1c76b" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="100" height="100" fill="#f5efe2"/><rect width="100" height="100" filter="url(#c1paper)"/><g filter="url(#c1rough)"><circle cx="50" cy="50" r="41" fill="none" stroke="#1d2c52" stroke-width="2.6"/><circle cx="50" cy="50" r="31.5" fill="none" stroke="#1d2c52" stroke-width="1"/>
+<path id="c1ring" d="M13.8 50.4A36.2 36.2 0 1 1 13.8 50.5" fill="none"/>
+<text font-family="Georgia, serif" font-size="6.4" letter-spacing="1.9" fill="#1d2c52"><textPath href="#c1ring">TRIALBRIDGE · FROM PATIENT TO TRIAL ·</textPath></text>
+<g transform="translate(27.5 30) scale(1.45)"><path d="M7 19.2C9.5 11.8 13 9.4 16.3 9.3C19.8 9.2 23 11.9 25.2 18.6C22.9 13.1 19.9 10.9 16.2 11.1C12.9 11.3 10.2 13.6 7.9 19.6Z" fill="#1d2c52"/>
+<path d="M11.6 15.2L11.4 19.6M16.1 11.6L16.3 19.8M20.6 14.6L20.8 19.5" stroke="#1d2c52" stroke-width="1.1" stroke-linecap="round"/>
+<path d="M6.4 19.9C10.6 19.3 15.4 20.2 20.2 19.6C21.9 19.4 23.2 19.6 24.4 19.5" fill="none" stroke="#1d2c52" stroke-width="1.9" stroke-linecap="round"/>
+<path d="M5.6 17.3C3.9 17.2 3 18.6 3.4 19.9C3.8 21.3 5.5 21.6 6.5 20.7" fill="none" stroke="#1d2c52" stroke-width="1.3" stroke-linecap="round"/></g></g>
+<path transform="translate(27.5 30) scale(1.45)" d="M24.6 19.2C24.7 17.7 26 16.7 27.4 16.9C28.9 17.1 29.7 18.4 29.5 19.8C29.3 21.2 28 22 26.7 21.8C25.4 21.6 24.5 20.6 24.6 19.2Z" fill="url(#c1gold)"/></svg>
